@@ -194,9 +194,76 @@ SKY_TOP = (110, 160, 248)
 SKY_HORIZON = (196, 222, 252)
 
 
+FLAT = False  # --fast: flat Minecraft-like shading (emission only, very fast), no sun/DOF
+
+
+def flat_material(name, image=None, color=None, fog=True, unlit=False):
+    """Fast look: texture * fixed per-face brightness, faded into the haze with distance."""
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    emit = nt.nodes.new("ShaderNodeEmission")
+    if image is not None:
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.image = image
+        tex.interpolation = "Closest"
+        col_socket = tex.outputs["Color"]
+    else:
+        rgbn = nt.nodes.new("ShaderNodeRGB")
+        rgbn.outputs[0].default_value = lin(color)
+        col_socket = rgbn.outputs[0]
+    if not unlit:
+        geo = nt.nodes.new("ShaderNodeNewGeometry")
+        sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+        nt.links.new(geo.outputs["Normal"], sep.inputs[0])
+        top = nt.nodes.new("ShaderNodeMath")
+        top.operation = "MULTIPLY_ADD"
+        top.inputs[1].default_value = 0.22
+        top.inputs[2].default_value = 0.80
+        nt.links.new(sep.outputs["Z"], top.inputs[0])
+        ax = nt.nodes.new("ShaderNodeMath")
+        ax.operation = "ABSOLUTE"
+        nt.links.new(sep.outputs["X"], ax.inputs[0])
+        side = nt.nodes.new("ShaderNodeMath")
+        side.operation = "MULTIPLY_ADD"
+        side.inputs[1].default_value = -0.10
+        nt.links.new(ax.outputs[0], side.inputs[0])
+        nt.links.new(top.outputs[0], side.inputs[2])
+        comb = nt.nodes.new("ShaderNodeCombineXYZ")
+        for i in range(3):
+            nt.links.new(side.outputs[0], comb.inputs[i])
+        mul = nt.nodes.new("ShaderNodeMix")
+        mul.data_type = "RGBA"
+        mul.blend_type = "MULTIPLY"
+        mul.inputs[0].default_value = 1.0
+        nt.links.new(col_socket, mul.inputs[6])
+        nt.links.new(comb.outputs[0], mul.inputs[7])
+        col_socket = mul.outputs[2]
+    if fog:
+        cam = nt.nodes.new("ShaderNodeCameraData")
+        mr = nt.nodes.new("ShaderNodeMapRange")
+        mr.inputs["From Min"].default_value = FOG["start"]
+        mr.inputs["From Max"].default_value = FOG["end"]
+        mr.inputs["To Max"].default_value = 0.92
+        nt.links.new(cam.outputs["View Distance"], mr.inputs["Value"])
+        mix = nt.nodes.new("ShaderNodeMix")
+        mix.data_type = "RGBA"
+        nt.links.new(mr.outputs[0], mix.inputs[0])
+        nt.links.new(col_socket, mix.inputs[6])
+        mix.inputs[7].default_value = lin(HAZE)
+        col_socket = mix.outputs[2]
+    nt.links.new(col_socket, emit.inputs["Color"])
+    nt.links.new(emit.outputs[0], out.inputs[0])
+    return mat
+
+
 def shading_material(name, image=None, color=None, fog=True, unlit=False, rough=0.9, spec=0.2, glow=0.0):
     """Lit material: pixel texture on a Principled BSDF (sun + sky light, soft shadows, bounce light),
     faded into the horizon haze with distance."""
+    if FLAT:
+        return flat_material(name, image, color, fog, unlit)
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     nt = mat.node_tree
@@ -962,7 +1029,7 @@ def build(args):
     camB, tB = make_cam("camB", 22)
     camC, tC = make_cam("camC", 20)
     cams = {"A": camA, "B": camB, "C": camC}
-    for cam, focus, fstop in ((camA, bro.head, 1.6), (camB, dimon.head, 2.4), (camC, bro.head, 1.8)):
+    for cam, focus, fstop in () if FLAT else ((camA, bro.head, 1.6), (camB, dimon.head, 2.4), (camC, bro.head, 1.8)):
         cam.data.dof.use_dof = True
         cam.data.dof.focus_object = focus
         cam.data.dof.aperture_fstop = fstop
@@ -1154,12 +1221,16 @@ def build(args):
     r.resolution_percentage = 100
     r.image_settings.file_format = "PNG"
     r.image_settings.color_mode = "RGB"
-    scene.view_settings.view_transform = "AgX"
+    if FLAT:
+        scene.cycles.use_denoising = False
+        scene.cycles.max_bounces = 0
+        sun_d.energy = 0.0
+    scene.view_settings.view_transform = "Standard" if FLAT else "AgX"
     try:
-        scene.view_settings.look = "AgX - Medium High Contrast"
+        scene.view_settings.look = "None" if FLAT else "AgX - Medium High Contrast"
     except TypeError:
         pass
-    scene.view_settings.exposure = 0.15
+    scene.view_settings.exposure = 0.0 if FLAT else 0.15
 
     return scene, cams, chars
 
@@ -1178,8 +1249,11 @@ def main():
     ap.add_argument("--samples", type=int, default=16)
     ap.add_argument("--frames", default=f"1-{FRAMES}", help="e.g. 1-150 or 10,70,130")
     ap.add_argument("--blend", help="also save the .blend file here")
+    ap.add_argument("--fast", action="store_true", help="flat shading, renders in ~1 s/frame")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
+    global FLAT
+    FLAT = args.fast
 
     scene, cams, chars = build(args)
     if args.blend:
