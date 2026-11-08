@@ -16,9 +16,9 @@ API = "https://api.elevenlabs.io/v1"
 CAST = {
     "bob": {
         "name": "Большой Боб",
-        "design": "Young Russian man, about 18, deep low voice, calm, slow and confident, slightly husky, "
-                  "leader of a street gang, speaks Russian naturally",
-        "voices": [("Nester", "pM78bgjPVk0JXtaEnFoj"), ("Ivan", "JKtNvDNrWu33P1xzttP2")],
+        "design": "Russian man in his mid twenties, mature low voice with a slight natural rasp, calm, unhurried "
+                  "and confident, the respected older guy of a street crew, speaks Russian naturally",
+        "voices": [("Sergey", "XuEV9VY3VUASYgJVNBh0"), ("Alexandr", "txnCCHHGKmYIwrn7HfHQ")],
         "text": "Значит, договорились. Джон, останешься здесь. Мы с пацанами вернёмся в свою школу. "
                 "Здорово, пацаны. Как lunch money сегодня? С собой взяли?",
     },
