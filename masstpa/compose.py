@@ -411,12 +411,20 @@ def clean(text):
 
 
 def subtitles(voice):
+    """One sentence at a time, timed proportionally to its length within the voice line."""
     out = []
     for vid, shot, t in T.VOICE:
         if vid not in voice:
             continue
         v = voice[vid]
-        out.append((T.g(shot, t), T.g(shot, t) + v["duration"] + 0.3, v["who"], clean(v["text"])))
+        text = clean(v["text"])
+        parts = [p for p in re.split(r"(?<=[.!?…])\s+", text) if p]
+        total = sum(len(p) for p in parts) or 1
+        t0 = T.g(shot, t)
+        for p in parts:
+            dt = v["duration"] * len(p) / total
+            out.append((t0, t0 + dt + (0.3 if p is parts[-1] else 0.05), v["who"], p))
+            t0 += dt
     return out
 
 
