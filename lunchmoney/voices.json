@@ -1,0 +1,15 @@
+{
+ "voices": {
+  "john": "0BcDz9UPwL3MpsnTeUlO",
+  "karim": "kwajW3Xh5svCeKU5ky2S",
+  "artem": "lsAmGFzUYusakA482527",
+  "kids": "kwajW3Xh5svCeKU5ky2S",
+  "bob": "yQMxflFxxt6cV7qFkA15",
+  "maxim": "TxMstVfuWFeHoHaagkwS",
+  "hoodie": "sOFTakfxzePjL2LuqsNW"
+ },
+ "pitch": {
+  "kids": 3,
+  "hoodie": 3
+ }
+}
