@@ -1465,6 +1465,9 @@ class World:
         sc.cycles.transparent_max_bounces = 4
         sc.cycles.filter_width = 1.2
         r.use_persistent_data = True
+        if os.environ.get("THREADS"):
+            r.threads_mode = "FIXED"
+            r.threads = int(os.environ["THREADS"])
         r.image_settings.file_format = "PNG"
         r.image_settings.color_mode = "RGB"
         sc.view_settings.view_transform = "Standard"
