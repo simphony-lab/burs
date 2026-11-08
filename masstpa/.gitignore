@@ -3,3 +3,4 @@ fonts/
 frames/
 voice/
 *.blend
+__pycache__/

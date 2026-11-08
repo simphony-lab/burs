@@ -205,7 +205,7 @@ def draw_cheat(img, d, gt, t, sid, boxes, extra):
         f = font(64 if pop > 0.5 else 48)
         outline_text(d, (W // 2, int(H * 0.36)), f"КОМБО ×{c}", f, rainbow(3, t), stroke=4, anchor="mm")
         if extra.get("cps"):
-            outline_text(d, (W // 2, int(H * 0.36) + 44), "CPS 20 · крит 100%", font(32), (255, 255, 255), stroke=3,
+            outline_text(d, (W // 2, int(H * 0.36) + 44), "крит 100% · удар 100%", font(32), (255, 255, 255), stroke=3,
                          anchor="mm")
     if extra.get("coords"):
         shadow_text(d, (10, 70), extra["coords"], font(16), (255, 255, 255))
@@ -314,7 +314,7 @@ def draw_gui(img, d, sid, t, st):
             draw_cursor(d, cx, cy)
         return
     # MassTPA settings
-    x, y, w_ = 60, 300, W - 120
+    x, y, w_ = 60, 222, W - 120
     rows = 7
     d.rectangle([x, y, x + w_, y + 56 + rows * 62 + 20], fill=(12, 6, 20, 240), outline=(255, 85, 255, 255), width=3)
     d.rectangle([x, y, x + w_, y + 56], fill=(200, 70, 255, 255))
@@ -394,7 +394,7 @@ def draw_chat(img, gt, n_lines=6):
     fs = font(16)
     f = ImageFont.truetype(FONT, 22)
     lh = 27
-    bottom = int(H * 0.86) - 120
+    bottom = H - 222
     for i, (t0, seg) in enumerate(reversed(lines)):
         a = min(1.0, (gt - t0) * 8 + 0.2)
         y = bottom - (i + 1) * lh
@@ -441,7 +441,7 @@ def wrap_text(d, text, f, maxw):
 
 def draw_subs(img, d, gt, subs):
     act = [s for s in subs if s[0] <= gt <= s[1]]
-    y = int(H * 0.585)
+    y = int(H * 0.625)
     for t0, t1, who, text in act[-2:]:
         f = font(32)
         prefix = "" if who == "narrator" else f"{who}: "
@@ -672,8 +672,8 @@ def compose_frame(shots_dir, sid, f, n, subs):
         k = int(t / 0.9)
         txt = ["3", "2", "1", "БОЙ!"][min(3, k)]
         sc = 1 + max(0.0, 0.3 - (t - k * 0.9)) * 2
-        outline_text(d, (W // 2, int(H * 0.42)), txt, font(int(64 * min(sc, 1.6) // 16 * 16) or 64),
-                     (255, 85, 85) if txt == "БОЙ!" else (255, 255, 255), stroke=5, anchor="mm")
+        outline_text(d, (W // 2, int(H * 0.40)), txt, font(128 if txt == "БОЙ!" else (192 if sc > 1.2 else 160)),
+                     (255, 85, 85) if txt == "БОЙ!" else (255, 255, 255), stroke=6, anchor="mm")
     if sid == "S7e":
         outline_text(d, (24, 24), "▶ ПОВТОР ×0.25", font(32), (255, 80, 80), stroke=3)
         if int(t * 2) % 2 == 0:
@@ -687,7 +687,7 @@ def compose_frame(shots_dir, sid, f, n, subs):
     if sid == "S9b":
         finale(img, d, t)
     if sid in T.CHAT_SHOWN:
-        draw_chat(img, gt)
+        draw_chat(img, gt, 22 if sid == "S8c" else 6)
     if sid == "S8c" and t > 7.5:
         img = glitch(img, min(1.0, (t - 7.5) / 3), f).convert("RGBA")
         d = ImageDraw.Draw(img)
@@ -736,56 +736,60 @@ def sweep_tone(f0, f1, dur, decay):
     return (np.sin(2 * math.pi * np.cumsum(fr) / SR) * env(n, 0.003, decay)).astype(np.float32)
 
 
+def mx(*parts):
+    """Sum (gain, signal) pairs of different lengths."""
+    n = max(len(p[1]) for p in parts)
+    out = np.zeros(n, np.float32)
+    for gain, sig in parts:
+        out[:len(sig)] += gain * sig
+    return out
+
+
 def sfx(name, seed=0):
     if name == "pling":
-        return 0.5 * (tone(1318.5, 0.45, 0.12, (1, 0, 0.25)) + 0.4 * tone(1975.5, 0.45, 0.1))
+        return mx((0.5, tone(1318.5, 0.45, 0.12, (1, 0, 0.25))), (0.2, tone(1975.5, 0.45, 0.1)))
     if name == "chat":
         return 0.3 * tone(880, 0.08, 0.025)
     if name == "teleport":
         n = int(SR * 0.5)
-        s = sweep_tone(300, 1400, 0.5, 0.2) * 0.5 + noise(n, 4, seed) * env(n, 0.01, 0.12) * 0.4
-        return s + 0.25 * tone(1760, 0.5, 0.15)
+        return mx((0.5, sweep_tone(300, 1400, 0.5, 0.2)), (0.4, noise(n, 4, seed) * env(n, 0.01, 0.12)),
+                  (0.25, tone(1760, 0.5, 0.15)))
     if name == "crit":
         n = int(SR * 0.25)
-        thump = sweep_tone(180, 60, 0.25, 0.06)
-        crack = noise(n, 1, seed) * env(n, 0.001, 0.02)
-        return 0.9 * thump + 0.5 * crack + 0.2 * tone(2400, 0.2, 0.05)
+        return mx((0.9, sweep_tone(180, 60, 0.25, 0.06)), (0.5, noise(n, 1, seed) * env(n, 0.001, 0.02)),
+                  (0.2, tone(2400, 0.2, 0.05)))
     if name == "hurt":
         return 0.8 * sweep_tone(220, 110, 0.3, 0.08)
     if name == "sweep":
         n = int(SR * 0.35)
-        nz = noise(n, 3, seed)
         e = np.sin(np.pi * np.linspace(0, 1, n)) ** 2
-        return (nz * e * 0.6 + sweep_tone(900, 300, 0.35, 0.15) * 0.3).astype(np.float32)
+        return mx((0.6, noise(n, 3, seed) * e), (0.3, sweep_tone(900, 300, 0.35, 0.15)))
     if name == "death":
-        return 0.7 * sweep_tone(330, 90, 0.45, 0.15) + 0.4 * sweep_tone(160, 50, 0.4, 0.12)
+        return mx((0.7, sweep_tone(330, 90, 0.45, 0.15)), (0.4, sweep_tone(160, 50, 0.4, 0.12)))
     if name == "poof":
         n = int(SR * 0.35)
         return noise(n, 8, seed) * env(n, 0.005, 0.08) * 0.6
     if name == "splash":
         n = int(SR * 0.6)
-        return noise(n, 2, seed) * env(n, 0.003, 0.18) * 0.7 + noise(n, 30, seed + 1) * env(n, 0.01, 0.3) * 0.6
+        return mx((0.7, noise(n, 2, seed) * env(n, 0.003, 0.18)), (0.6, noise(n, 30, seed + 1) * env(n, 0.01, 0.3)))
     if name == "totem":
         out = np.zeros(int(SR * 1.4), np.float32)
         for i, fr in enumerate([523.25, 659.25, 783.99, 1046.5, 1318.5, 1568.0]):
-            s = tone(fr, 0.8, 0.3, (1, 0.3))
+            s_ = tone(fr, 0.8, 0.3, (1, 0.3))
             j = int(i * 0.09 * SR)
-            out[j:j + len(s)] += s * 0.4
+            out[j:j + len(s_)] += s_ * 0.4
         return out
     if name == "shield":
-        out = np.zeros(int(SR * 0.6), np.float32)
-        for fr, a in ((420, 0.6), (1130, 0.4), (2310, 0.3), (3570, 0.2)):
-            out += tone(fr, 0.6, 0.12) * a
+        parts = [(a, tone(fr, 0.6, 0.12)) for fr, a in ((420, 0.6), (1130, 0.4), (2310, 0.3), (3570, 0.2))]
         n = int(SR * 0.05)
-        out[:n] += noise(n, 1, seed) * 0.8
-        return out
+        parts.append((0.8, noise(n, 1, seed)))
+        return mx(*parts)
     if name == "jump":
         return 0.3 * sweep_tone(140, 90, 0.12, 0.04)
     if name == "swoosh":
         n = int(SR * 0.9)
-        nz = noise(n, 5, seed)
         e = np.sin(np.pi * np.linspace(0, 1, n)) ** 2
-        return nz * e * 0.5
+        return noise(n, 5, seed) * e * 0.5
     if name == "beep":
         return 0.5 * tone(880, 0.25, 0.1, (1, 0.2))
     if name == "go":
@@ -793,12 +797,11 @@ def sfx(name, seed=0):
     if name == "glitch":
         n = int(SR * 0.7)
         sq = np.sign(np.sin(2 * math.pi * 55 * np.arange(n) / SR)) * 0.4
-        nz = noise(n, 1, seed)
         hold = (np.arange(n) // 900) % 2
-        return ((sq + nz * 0.5) * hold * 0.5).astype(np.float32)
+        return ((sq + noise(n, 1, seed) * 0.5) * hold * 0.5).astype(np.float32)
     if name == "click":
         n = int(SR * 0.03)
-        return noise(n, 1, seed) * env(n, 0.0005, 0.006) * 0.6 + tone(2000, 0.03, 0.01) * 0.3
+        return mx((0.6, noise(n, 1, seed) * env(n, 0.0005, 0.006)), (0.3, tone(2000, 0.03, 0.01)))
     if name == "type":
         n = int(SR * 0.025)
         return noise(n, 2, seed) * env(n, 0.0005, 0.005) * 0.35
