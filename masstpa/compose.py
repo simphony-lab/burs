@@ -102,14 +102,14 @@ def draw_hud(img, d, st):
         d.rectangle([x, y0, x + s - 2, y0 + s - 2], outline=(140, 140, 140, 230), width=2,
                     fill=(60, 60, 60, 140))
         if HOTBAR[i]:
-            img.alpha_composite(icon(HOTBAR[i], 32), (x + 5, y0 + 5))
+            img.paste(icon(HOTBAR[i], 32), (x + 5, y0 + 5), icon(HOTBAR[i], 32))
             if i in COUNTS:
                 shadow_text(d, (x + s - 22, y0 + s - 20), COUNTS[i], font(16), (255, 255, 255))
     sx = x0 + st.get("slot", 0) * s
     d.rectangle([sx - 3, y0 - 3, sx + s + 1, y0 + s + 1], outline=(250, 250, 250, 255), width=3)
     # offhand shield
     d.rectangle([x0 - 60, y0, x0 - 16, y0 + s - 2], outline=(140, 140, 140, 230), width=2, fill=(60, 60, 60, 140))
-    img.alpha_composite(icon("shield", 32), (x0 - 54, y0 + 5))
+    img.paste(icon("shield", 32), (x0 - 54, y0 + 5), icon("shield", 32))
     # xp bar
     d.rectangle([x0, y0 - 14, x0 + 9 * s, y0 - 8], fill=(20, 20, 20, 220))
     d.rectangle([x0, y0 - 14, x0 + int(9 * s * 0.62), y0 - 8], fill=(120, 230, 60, 255))
@@ -403,7 +403,7 @@ def draw_chat(img, gt, n_lines=6):
         for s, col in seg:
             shadow_text(d, (x, y + 2), s, f, col, int(255 * a))
             x += tw(d, s, f)
-    img.alpha_composite(ov)
+    img.paste(ov, (0, 0), ov)
 
 
 def clean(text):
@@ -552,7 +552,7 @@ VIG = None
 def base_frame(shots_dir, sid, f, n):
     kind = T.KIND[sid]
     if kind == "2d":
-        return Image.new("RGBA", (W, H), (0, 0, 0, 255)), None
+        return Image.new("RGB", (W, H), (0, 0, 0)), None
     src_sid, src_f = sid, f
     if sid == "S8d":
         src_sid, src_f = "S8c", int(T.DUR["S8c"] * FPS)
@@ -564,7 +564,7 @@ def base_frame(shots_dir, sid, f, n):
             src_f = int((7.5 * FPS) + ((f - int(7.5 * FPS)) // hold) * hold * 0.4)
     path = os.path.join(shots_dir, src_sid, f"f{src_f:04d}.png")
     if not os.path.exists(path):
-        img = Image.new("RGBA", (W, H), (30, 30, 40, 255))
+        img = Image.new("RGB", (W, H), (30, 30, 40))
         ImageDraw.Draw(img).text((40, H // 2), f"{sid} f{f} (нет кадра)", font=font(32), fill=(255, 80, 80, 255))
         return img, None
     img = Image.open(path).convert("RGB")
@@ -577,7 +577,7 @@ def base_frame(shots_dir, sid, f, n):
     a = np.clip(a * VIG * np.array([1.02, 1.0, 0.97], np.float32), 0, 255).astype(np.uint8)
     meta = load_meta(shots_dir, src_sid)
     m = meta["f"].get(str(src_f)) if meta else None
-    return Image.fromarray(a).convert("RGBA"), m
+    return Image.fromarray(a), m
 
 
 _meta = {}
@@ -648,7 +648,7 @@ def compose_frame(shots_dir, sid, f, n, subs):
     t = (f - 1) / FPS
     gt = T.START[sid] + t
     img, m = base_frame(shots_dir, sid, f, n)
-    d = ImageDraw.Draw(img)
+    d = ImageDraw.Draw(img, "RGBA")
     fp = sid in T.FP_SHOTS or (sid in T.FP_LATE and t >= T.FP_LATE[sid])
     if m:
         draw_tags(img, d, m["tags"], fp=fp)
@@ -662,7 +662,7 @@ def compose_frame(shots_dir, sid, f, n, subs):
         ic = icon("totem", 16).resize((size, size), Image.NEAREST)
         a = int(255 * (1 - max(0.0, k - 0.5) * 2))
         ic.putalpha(ic.getchannel("A").point(lambda v: min(v, a)))
-        img.alpha_composite(ic, (W // 2 - size // 2, int(H * 0.45) - size // 2))
+        img.paste(ic, (W // 2 - size // 2, int(H * 0.45) - size // 2), ic)
         outline_text(d, (W // 2, int(H * 0.27)), "Тотем бессмертия использован", font(32), (250, 214, 70), stroke=3,
                      anchor="mm")
     if sid == "S3b" and t >= 2.2:
@@ -697,11 +697,11 @@ def compose_frame(shots_dir, sid, f, n, subs):
     if sid in T.CHAT_SHOWN:
         draw_chat(img, gt, 22 if sid == "S8c" else 6)
     if sid == "S8c" and t > 7.5:
-        img = glitch(img, min(1.0, (t - 7.5) / 3), f).convert("RGBA")
-        d = ImageDraw.Draw(img)
+        img = glitch(img, min(1.0, (t - 7.5) / 3), f)
+        d = ImageDraw.Draw(img, "RGBA")
     if sid == "S8d":
-        img = glitch(img, 1.0 if t < 3 else 0.6, f // 3).convert("RGBA")
-        d = ImageDraw.Draw(img)
+        img = glitch(img, 1.0 if t < 3 else 0.6, f // 3)
+        d = ImageDraw.Draw(img, "RGBA")
         if t > 5.0:
             d.rectangle([0, 0, W, H], fill=(0, 0, 0, min(255, int((t - 5.0) * 120))))
     draw_subs(img, d, gt, subs)
@@ -943,6 +943,7 @@ def main():
     ap.add_argument("--only", help="comma separated shots -> writes preview PNGs instead of the video")
     ap.add_argument("--at", default="0.5", help="with --only: comma separated shot-local seconds to preview")
     ap.add_argument("--work", help="frame cache directory")
+    ap.add_argument("--until", help="stop composing before this shot (partial run)")
     args = ap.parse_args()
     voice = json.load(open(args.voice))
     subs = subtitles(voice)
@@ -958,6 +959,9 @@ def main():
     os.makedirs(work, exist_ok=True)
     idx = 0
     for sid, dur, kind in T.SHOTS:
+        if args.until and sid == args.until:
+            print("[compose] stopped before", sid)
+            return
         n = int(round(dur * FPS))
         for f in range(1, n + 1):
             idx += 1
