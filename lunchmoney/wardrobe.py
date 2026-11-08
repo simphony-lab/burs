@@ -196,6 +196,27 @@ def hide_hair_under(h, fit, margin=0.004):
     bm.free()
 
 
+def hide_scalp_under(h, fit, margin=0.012):
+    """Remove the (never visible) top of the head under a cap so the cap can be lower than the skull."""
+    import bmesh
+    me = h.body.data
+    hw = h.W[:, h.bones.index("head")] > 0.5
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    kill = []
+    for f in bm.faces:
+        ok = True
+        for v in f.verts:
+            if not hw[v.index] or v.co.z < float(fit.zcut(v.co.y)) + margin:
+                ok = False
+                break
+        if ok:
+            kill.append(f)
+    bmesh.ops.delete(bm, geom=kill, context="FACES_ONLY")
+    bm.to_mesh(me)
+    bm.free()
+
+
 def visor_mesh(fit, extra, length=0.052, droop=0.012, span=0.38, segs=26):
     """Stiff cap visor along the front of the brow line."""
     cx, cy, rx, ry = fit.section(0.0)
@@ -264,8 +285,9 @@ def cap8(rgb=(0.1, 0.095, 0.09)):
     def f(h):
         fit = HeadFit(h, brow_gap=0.02, back_drop=0.05, hair_squash=0.6)
         hide_hair_under(h, fit)
+        hide_scalp_under(h, fit)
         cx, cy, rx, ry = fit.section(fit.umax * 0.45)
-        ztop = fit.top_z + 0.01
+        ztop = min(fit.top_z + 0.002, fit.z_front + 0.088)
         segs = 72
         prof_rings = []
         # band: hugs the head for ~2.5 cm
@@ -274,15 +296,15 @@ def cap8(rgb=(0.1, 0.095, 0.09)):
         band_top = prof_rings[-1]
         # crown: the wide rim sits low (just above the band, over the temples), then a soft flat dome on top
         rings_spec = [  # (radius factor, height above band top at the rim .. dome)
-            (0.9, 0.006), (1.0, 0.018), (0.98, 0.03), (0.86, None), (0.62, None), (0.32, None), (0.1, None)]
+            (0.92, 0.005), (1.0, 0.014), (0.98, 0.024), (0.86, None), (0.62, None), (0.32, None), (0.1, None)]
         crown = []
         for k, (rf, dz) in enumerate(rings_spec):
             r = []
             for i in range(segs):
                 a_ = 2 * math.pi * i / segs
                 front = max(0.0, math.cos(a_))
-                Rx = (rx + 0.055 + 0.01 * front) * rf
-                Ry = (ry + 0.05 + 0.022 * front) * rf
+                Rx = (rx + 0.036 + 0.008 * front) * rf
+                Ry = (ry + 0.032 + 0.018 * front) * rf
                 x = cx + math.sin(a_) * Rx
                 y = cy - 0.01 - math.cos(a_) * Ry - 0.02 * front * rf
                 zb = band_top[i][2]
@@ -290,7 +312,7 @@ def cap8(rgb=(0.1, 0.095, 0.09)):
                     z = zb + dz - 0.012 * front
                 else:
                     tdome = {0.86: 0.55, 0.62: 0.85, 0.32: 0.97, 0.1: 1.0}[rf]
-                    z0 = zb + 0.03 - 0.012 * front
+                    z0 = zb + 0.024 - 0.012 * front
                     z = z0 + (ztop - 0.008 * front - z0) * tdome
                 r.append((x, y, z))
             crown.append(r)
@@ -545,7 +567,8 @@ CAST = {
                        "skin": "young_caucasian_male", "face": 0.8, "tone": (1.0, 0.9, 0.84)},
                  outfit=[garment("male_casualsuit05", top=(0.07, 0.08, 0.13), legs=(0.08, 0.08, 0.1), top_rough=0.75),
                          fur_collar(), beanie(), shoes("shoes05", (0.06, 0.06, 0.06))]),
-    "karim": dict(spec={"muscle": 0.5, "weight": 0.45, "height": 0.1, "seed": 37, "hair": "short02",
+    "karim": dict(spec={"muscle": 0.5, "weight": 0.45, "height": 0.1, "seed": 37,
+                        "extra": [("head/head-scale-vert-decr.target.gz", 0.55)], "hair": "short02",
                         "hair_rgb": (0.07, 0.05, 0.04), "brows": "eyebrow003", "eyes": "brown",
                         "skin": "young_caucasian_male2", "face": 0.7, "tone": (1.0, 0.9, 0.84)},
                   outfit=[garment("male_casualsuit05", top=(0.16, 0.16, 0.12), legs=(0.12, 0.13, 0.17), top_rough=0.8),
