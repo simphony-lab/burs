@@ -39,6 +39,25 @@ SCENES = {
 }
 
 
+VOWELS = "аеёиоуыэюяАЕЁИОУЫЭЮЯ"
+
+
+def stress(text):
+    """'+' before a stressed vowel -> vowel + combining acute accent (U+0301), which ElevenLabs reads as stress.
+    Example: "Знач+ит, догов+орились" -> "Знач́ит"... (the mark goes after the vowel)."""
+    out = []
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if c == "+" and i + 1 < len(text) and text[i + 1] in VOWELS:
+            out.append(text[i + 1] + "\u0301")
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def req(path, body, key, accept="audio/mpeg"):
     r = urllib.request.Request(API + path, data=json.dumps(body).encode(),
                                headers={"xi-api-key": key, "Content-Type": "application/json", "Accept": accept})
@@ -87,7 +106,7 @@ def main():
         raw = os.path.join(args.out, f"{lid}_{tag}.mp3")
         if not os.path.exists(raw):
             open(raw, "wb").write(req(f"/text-to-speech/{vid}?output_format=mp3_44100_128",
-                                      {"text": text, "model_id": "eleven_v3",
+                                      {"text": stress(text), "model_id": "eleven_v3",
                                        "voice_settings": {"stability": 0.5, "similarity_boost": 0.8, "style": 0.25}},
                                       key))
         src = raw

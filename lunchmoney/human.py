@@ -212,6 +212,11 @@ _imgs = {}
 
 def img(path, colorspace="sRGB"):
     key = (path, colorspace)
+    if key in _imgs:
+        try:
+            _imgs[key].name
+        except ReferenceError:
+            del _imgs[key]
     if key not in _imgs:
         im = bpy.data.images.load(path, check_existing=True)
         im.colorspace_settings.name = colorspace

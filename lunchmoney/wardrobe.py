@@ -95,6 +95,127 @@ def _head_frame(h):
     return top, ctr, rx, ry
 
 
+class HeadFit:
+    """Slices the real head (+ compressed hair) above a brow line that slopes down to the back, so headwear
+    can be built to sit on the forehead and hug the skull."""
+
+    def __init__(self, h, brow_gap=0.012, back_drop=0.055, hair_squash=0.45):
+        top, ctr, P = h.head_top()
+        brows = [p for p in h.parts if "eyebrow" in p.name]
+        bz = max(v.co.z for v in brows[0].data.vertices) if brows else top.z - 0.1
+        self.front_y = float(P[:, 1].min())
+        self.back_y = float(P[:, 1].max())
+        self.z_front = bz + brow_gap
+        self.back_drop = back_drop
+        pts = P
+        if getattr(h, "hair", None) is not None:
+            hv = np.array([v.co[:] for v in h.hair.data.vertices])
+            # pull the hair volume towards the scalp (a hat presses it down)
+            c = np.array([ctr.x, ctr.y, ctr.z])
+            hv = c + (hv - c) * (1 - hair_squash) + (hv - c) / (np.linalg.norm(hv - c, axis=1, keepdims=True) + 1e-6) * \
+                np.linalg.norm(hv - c, axis=1, keepdims=True) * hair_squash * 0.93
+            pts = np.vstack([P, hv])
+        self.pts = pts
+        self.top_z = float(P[:, 2].max())
+        u = pts[:, 2] - self.zcut(pts[:, 1])
+        self.sections = []
+        umax = float(u.max())
+        for k in range(12):
+            u0 = umax * k / 12
+            sel = pts[(u >= u0 - 0.006) & (u <= u0 + 0.006)]
+            if len(sel) < 8:
+                continue
+            cx, cy = float(np.median(sel[:, 0])), float((np.percentile(sel[:, 1], 98) + np.percentile(sel[:, 1], 2)) / 2)
+            rx = float((np.percentile(sel[:, 0], 99) - np.percentile(sel[:, 0], 1)) / 2)
+            ry = float((np.percentile(sel[:, 1], 99) - np.percentile(sel[:, 1], 1)) / 2)
+            self.sections.append((u0, cx, cy, rx, ry))
+        self.umax = umax
+        self.ctr = ctr
+
+    def zcut(self, y):
+        t = np.clip((np.asarray(y) - self.front_y) / (self.back_y - self.front_y), 0, 1)
+        return self.z_front - self.back_drop * t
+
+    def section(self, u):
+        s = self.sections
+        if u <= s[0][0]:
+            return s[0][1:]
+        for a, b in zip(s, s[1:]):
+            if a[0] <= u <= b[0]:
+                k = (u - a[0]) / (b[0] - a[0] + 1e-9)
+                return tuple(a[i] + (b[i] - a[i]) * k for i in range(1, 5))
+        return s[-1][1:]
+
+    def ring(self, u, extra=0.0, segs=72, fwd=0.0, z_override=None, scale=1.0):
+        cx, cy, rx, ry = self.section(min(u, self.umax))
+        out = []
+        for i in range(segs):
+            a = 2 * math.pi * i / segs
+            x = cx + math.sin(a) * (rx * scale + extra)
+            y = cy - math.cos(a) * (ry * scale + extra) - fwd * max(0.0, math.cos(a))
+            z = (z_override if z_override is not None else float(self.zcut(y)) + u)
+            out.append((x, y, z))
+        return out
+
+
+def _rings_to_mesh(rings, close_top=True):
+    segs = len(rings[0])
+    verts = [v for r in rings for v in r]
+    faces = []
+    for j in range(len(rings) - 1):
+        for i in range(segs):
+            a = j * segs + i
+            b = j * segs + (i + 1) % segs
+            faces.append((a, b, b + segs, a + segs))
+    if close_top:
+        last = rings[-1]
+        c = tuple(sum(v[k] for v in last) / segs for k in range(3))
+        ci = len(verts)
+        verts.append(c)
+        base = (len(rings) - 1) * segs
+        for i in range(segs):
+            faces.append((base + i, base + (i + 1) % segs, ci))
+    return verts, faces
+
+
+def hide_hair_under(h, fit, margin=0.004):
+    """Delete hair faces that would poke through the hat."""
+    hair = getattr(h, "hair", None)
+    if hair is None:
+        return
+    me = hair.data
+    co = np.array([v.co[:] for v in me.vertices])
+    above = co[:, 2] > fit.zcut(co[:, 1]) - margin
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    kill = [f for f in bm.faces if all(above[v.index] for v in f.verts)]
+    bmesh.ops.delete(bm, geom=kill, context="FACES")
+    bm.to_mesh(me)
+    bm.free()
+
+
+def visor_mesh(fit, extra, length=0.052, droop=0.012, span=0.38, segs=26):
+    """Stiff cap visor along the front of the brow line."""
+    cx, cy, rx, ry = fit.section(0.0)
+    vv, ff = [], []
+    for i in range(segs + 1):
+        a = -math.pi * span + 2 * math.pi * span * i / segs
+        edge = abs(a) / (math.pi * span)
+        L = length * (1 - 0.55 * edge ** 2)
+        for k, (d, dz) in enumerate(((0.0, 0.0), (L, -droop * (1 - 0.3 * edge)))):
+            rr_x, rr_y = rx + extra + d, ry + extra + d
+            x = cx + math.sin(a) * rr_x
+            y = cy - math.cos(a) * rr_y
+            z = float(fit.zcut(cy - math.cos(a) * (ry + extra))) + 0.004 + dz
+            vv.append((x, y, z))
+    for i in range(segs):
+        a = i * 2
+        ff.append((a, a + 2, a + 3, a + 1))
+    return vv, ff
+
+
 def _obj(name, verts, faces, mat, smooth=True, solid=0.0, subsurf=1):
     ob = H.make_mesh(name, verts, faces, mats=[mat], smooth=smooth)
     if solid:
@@ -137,87 +258,108 @@ def fur(name, rgb):
 
 
 def cap8(rgb=(0.1, 0.095, 0.09)):
-    """90s eight-panel cap: full crown overhanging a short stiff visor, flat-ish top, button."""
+    """90s eight-panel cap that sits on the forehead and hugs the skull; slightly full crown, short visor."""
 
     def f(h):
-        top, ctr, rx, ry = _head_frame(h)
-        base_z = top.z - 0.085
-        R = max(rx, ry) * 1.04
-        # (radius factor, height, forward shift) from the headband up
-        prof = [(1.0, 0.0, 0.0), (1.1, 0.02, 0.006), (1.22, 0.045, 0.016), (1.26, 0.062, 0.024),
-                (1.18, 0.075, 0.026), (0.95, 0.086, 0.022), (0.55, 0.093, 0.016), (0.12, 0.096, 0.012)]
-        segs = 72
-        verts, faces = [], []
-        for j, (rf, z, fwd) in enumerate(prof):
-            for i in range(segs):
-                a = 2 * math.pi * i / segs
-                seam = 1.0 - 0.025 * (0.5 + 0.5 * math.cos(8 * a)) * (1 if 0 < j < len(prof) - 1 else 0)
-                front = max(0.0, math.cos(a))  # a=0 is the front (-Y)
-                rr = R * rf * seam * (1 + 0.06 * front * min(1, j / 3))
-                verts.append((ctr.x + math.sin(a) * rr, ctr.y + 0.01 - math.cos(a) * rr * 1.07 - fwd * front * 1.6,
-                              base_z + z))
-        for j in range(len(prof) - 1):
-            for i in range(segs):
-                a = j * segs + i
-                b = j * segs + (i + 1) % segs
-                faces.append((a, b, b + segs, a + segs))
-        topi = len(verts)
-        verts.append((ctr.x, ctr.y + 0.01 - 0.02, base_z + 0.097))
-        last = (len(prof) - 1) * segs
-        for i in range(segs):
-            faces.append((last + i, last + (i + 1) % segs, topi))
+        fit = HeadFit(h, brow_gap=0.016, back_drop=0.05, hair_squash=0.6)
+        hide_hair_under(h, fit)
+        rings = []
+        n = 11
+        ztop = fit.top_z - 0.002
+        for j in range(n):
+            t = j / (n - 1)
+            u = fit.umax * 0.86 * t
+            # band hugs the head, the crown flares out above it and stays wide up to a flat top
+            flare = min(1.0, max(0.0, (t - 0.25) / 0.55))
+            flare = flare * flare * (3 - 2 * flare)
+            puff = 0.008 + 0.042 * flare
+            fwd = 0.04 * flare
+            u_shape = min(u, fit.umax * 0.5)
+            r = fit.ring(u_shape, extra=puff, fwd=fwd)
+            zt = ztop - 0.012 * (1 - t)
+            r = [(x, y, z0 + u if t < 0.999 else ztop) for (x, y, z0) in
+                 [(px, py, float(fit.zcut(py))) for px, py, _ in r]]
+            r = [(x, y, min(z, ztop - 0.014 * max(0.0, (fit.ctr.y - y) / 0.12))) for x, y, z in r]
+            # 8 seams
+            r = [(fit.ctr.x + (x - fit.ctr.x) * (1 - 0.01 * (0.5 + 0.5 * math.cos(8 * 2 * math.pi * i / len(r)))),
+                  fit.ctr.y + (y - fit.ctr.y) * (1 - 0.01 * (0.5 + 0.5 * math.cos(8 * 2 * math.pi * i / len(r)))), z)
+                 for i, (x, y, z) in enumerate(r)]
+            rings.append(r)
+        for s_, dz in ((0.72, 0.003), (0.36, 0.006)):
+            base = rings[-1]
+            cx_ = sum(p[0] for p in base) / len(base)
+            cy_ = sum(p[1] for p in base) / len(base)
+            rings.append([(cx_ + (x - cx_) * s_, cy_ + (y - cy_) * s_, ztop + dz) for x, y, z in base])
+        v, fcs = _rings_to_mesh(rings)
         mat = wool(h.name + "_cap", rgb, 420.0)
-        crown = _obj(h.name + "_cap", verts, faces, mat, solid=0.004)
-        # visor: stiff, slightly curved down, tucked under the overhang
-        vv, ff = [], []
-        n = 28
-        for i in range(n + 1):
-            a = -math.pi * 0.36 + math.pi * 0.72 * i / n
-            for k, (rr, dz) in enumerate(((R * 0.99, 0.004), (R * 1.0 + 0.05, -0.014))):
-                bend = -0.008 * (abs(a) / (math.pi * 0.36)) ** 2 if k else 0.0
-                vv.append((ctr.x + math.sin(a) * rr, ctr.y + 0.01 - math.cos(a) * rr * 1.07, base_z + dz + bend))
-        for i in range(n):
-            a = i * 2
-            ff.append((a, a + 2, a + 3, a + 1))
-        visor = _obj(h.name + "_visor", vv, ff, wool(h.name + "_visorm", tuple(c * 0.8 for c in rgb), 500.0),
-                     solid=0.006, subsurf=1)
-        bv, bf = _lathe("b", [(0.011, 0.0), (0.009, 0.005), (0.003, 0.008)], 16)
-        btn_ob = _obj(h.name + "_btn", [(x + ctr.x, y + ctr.y - 0.01, z + base_z + 0.094) for x, y, z in bv], bf, mat,
-                      subsurf=0)
-        for ob in (crown, visor, btn_ob):
+        crown = _obj(h.name + "_cap", v, fcs, mat, solid=0.003, subsurf=2)
+        vv, ff = visor_mesh(fit, 0.011, length=0.058)
+        visor = _obj(h.name + "_visor", vv, ff, wool(h.name + "_visorm", tuple(c * 0.85 for c in rgb), 500.0),
+                     solid=0.005, subsurf=1)
+        top = rings[-1]
+        cxy = (sum(p[0] for p in top) / len(top), sum(p[1] for p in top) / len(top), max(p[2] for p in top))
+        bv, bf = _lathe("b", [(0.009, 0.0), (0.008, 0.004), (0.003, 0.007)], 16)
+        btn = _obj(h.name + "_btn", [(x + cxy[0], y + cxy[1], z + cxy[2] - 0.002) for x, y, z in bv], bf, mat, subsurf=0)
+        for ob in (crown, visor, btn):
             h.attach_to_bone(ob, "head")
     return f
 
 
 def fur_hat(rgb=(0.11, 0.075, 0.05)):
-    """Brown fur hat (not an ushanka): tall rounded 'pirozhok'."""
+    """Round brown fur hat sitting low on the forehead, straight walls, soft rounded top."""
 
     def f(h):
-        top, ctr, rx, ry = _head_frame(h)
-        base_z = top.z - 0.09
-        R = max(rx, ry) * 1.1
-        prof = [(R * 1.0, 0.0), (R * 1.08, 0.03), (R * 1.13, 0.08), (R * 1.15, 0.12), (R * 1.08, 0.15),
-                (R * 0.75, 0.162), (R * 0.2, 0.166)]
-
-        def mod(a, t):
-            return 1.0 + 0.02 * math.sin(a * 13 + t * 5) + 0.015 * math.sin(a * 29)
-
-        v, fcs = _lathe("hat", prof, 72, (1.0, 1.12), mod)
-        v = [(x + ctr.x, y + ctr.y + 0.01, z + base_z) for x, y, z in v]
-        ob = _obj(h.name + "_furhat", v, fcs, fur(h.name + "_fur", rgb), solid=0.006)
+        fit = HeadFit(h, brow_gap=0.022, back_drop=0.06)
+        hide_hair_under(h, fit)
+        cx, cy, rx, ry = fit.section(0.0)
+        base_extra = 0.028
+        R = max(rx, ry * 0.92)
+        rings = []
+        height = (fit.top_z - fit.z_front) + 0.03
+        n = 10
+        for j in range(n):
+            t = j / (n - 1)
+            if t < 0.82:
+                r = fit.ring(0.0, extra=base_extra + 0.012 * t)
+                # walls go straight up from the brow ring
+                r = [(x, y, z + height * t / 0.82 * (1 - 0.15 * (z - fit.z_front + fit.back_drop) / 0.2))
+                     for x, y, z in r]
+            else:
+                k = (t - 0.82) / 0.18
+                rr = 1 - 0.75 * k ** 1.6
+                base = fit.ring(0.0, extra=base_extra + 0.012)
+                ztop = fit.z_front + height + 0.012 * math.sin(math.pi * k * 0.5)
+                r = [(cx + (x - cx) * rr, cy + (y - cy) * rr, ztop) for x, y, z in base]
+            rings.append(r)
+        # fur unevenness
+        rnd = [0.0015 * math.sin(i * 1.7) + 0.001 * math.sin(i * 4.3) for i in range(len(rings[0]))]
+        rings = [[(cx + (x - cx) * (1 + rnd[i] / R), cy + (y - cy) * (1 + rnd[i] / R), z) for i, (x, y, z) in enumerate(r)]
+                 for r in rings]
+        v, fcs = _rings_to_mesh(rings)
+        ob = _obj(h.name + "_furhat", v, fcs, fur(h.name + "_fur", rgb), solid=0.008)
         h.attach_to_bone(ob, "head")
     return f
 
 
 def beanie(rgb=(0.035, 0.035, 0.04)):
+    """Knit beanie pulled over the head with a folded cuff."""
+
     def f(h):
-        top, ctr, rx, ry = _head_frame(h)
-        base_z = top.z - 0.128
-        R = max(rx, ry) * 1.02
-        prof = [(R * 1.02, 0.0), (R * 1.07, 0.02), (R * 1.07, 0.045), (R * 1.03, 0.05), (R * 1.03, 0.09),
-                (R * 0.85, 0.125), (R * 0.45, 0.143), (R * 0.1, 0.147)]
-        v, fcs = _lathe("beanie", prof, 64, (1.0, 1.08))
-        v = [(x + ctr.x, y + ctr.y + 0.008, z + base_z) for x, y, z in v]
+        fit = HeadFit(h, brow_gap=0.02, back_drop=0.07)
+        hide_hair_under(h, fit)
+        rings = [fit.ring(0.0, extra=0.016), fit.ring(0.028, extra=0.017), fit.ring(0.03, extra=0.011)]
+        n = 8
+        for j in range(1, n + 1):
+            t = j / n
+            u = 0.03 + (fit.umax - 0.03) * t
+            rings.append(fit.ring(u, extra=0.011 + 0.006 * t))
+        base = rings[-1]
+        cx_ = sum(p[0] for p in base) / len(base)
+        cy_ = sum(p[1] for p in base) / len(base)
+        zt = max(p[2] for p in base)
+        for s_, dz in ((0.8, 0.01), (0.55, 0.018), (0.25, 0.022)):
+            rings.append([(cx_ + (x - cx_) * s_, cy_ + (y - cy_) * s_, zt + dz) for x, y, z in base])
+        v, fcs = _rings_to_mesh(rings)
         m, nt, b = H.node_mat(h.name + "_knit")
         b.inputs["Base Color"].default_value = H.lin3(rgb) + (1,)
         b.inputs["Roughness"].default_value = 0.95
@@ -231,7 +373,7 @@ def beanie(rgb=(0.035, 0.035, 0.04)):
         bp.inputs["Strength"].default_value = 0.6
         nt.links.new(wv.outputs[1], bp.inputs["Height"])
         nt.links.new(bp.outputs[0], b.inputs["Normal"])
-        ob = _obj(h.name + "_beanie", v, fcs, m, solid=0.005)
+        ob = _obj(h.name + "_beanie", v, fcs, m, solid=0.004)
         h.attach_to_bone(ob, "head")
     return f
 
@@ -364,29 +506,29 @@ def coat_skirt(rgb=(0.025, 0.022, 0.02), length=0.42):
 CAST = {
     "bob": dict(spec={"muscle": 0.7, "weight": 0.78, "height": 0.6, "seed": 11, "hair": "short04",
                       "hair_rgb": (0.04, 0.03, 0.022), "brows": "eyebrow007", "eyes": "brown",
-                      "skin": "young_caucasian_male2", "face": 0.7},
+                      "skin": "young_caucasian_male2", "face": 0.7, "tone": (1.0, 0.9, 0.84)},
                 outfit=[garment("male_casualsuit05", top=(0.05, 0.045, 0.042), legs=(0.06, 0.06, 0.065), top_rough=0.5,
                                 top_coat=0.12, top_gain=1.0),
                         coat_skirt(), sweater_collar((0.12, 0.11, 0.1)), fur_hat(), shoes("shoes01", (0.05, 0.04, 0.035))]),
     "john": dict(spec={"muscle": 0.55, "weight": 0.5, "height": 0.35, "seed": 23, "hair": "short02",
                        "hair_rgb": (0.08, 0.06, 0.05), "brows": "eyebrow010", "eyes": "grey",
-                       "skin": "young_caucasian_male", "face": 0.8},
+                       "skin": "young_caucasian_male", "face": 0.8, "tone": (1.0, 0.9, 0.84)},
                  outfit=[garment("male_casualsuit05", top=(0.07, 0.08, 0.13), legs=(0.08, 0.08, 0.1), top_rough=0.75),
                          fur_collar(), beanie(), shoes("shoes05", (0.06, 0.06, 0.06))]),
     "karim": dict(spec={"muscle": 0.5, "weight": 0.45, "height": 0.1, "seed": 37, "hair": "short02",
                         "hair_rgb": (0.07, 0.05, 0.04), "brows": "eyebrow003", "eyes": "brown",
-                        "skin": "young_caucasian_male2", "face": 0.7},
+                        "skin": "young_caucasian_male2", "face": 0.7, "tone": (1.0, 0.9, 0.84)},
                   outfit=[garment("male_casualsuit05", top=(0.16, 0.16, 0.12), legs=(0.12, 0.13, 0.17), top_rough=0.8),
                           cap8((0.14, 0.12, 0.1)), shoes("shoes02")]),
     "artem": dict(spec={"muscle": 0.45, "weight": 0.35, "height": 0.0, "seed": 41, "hair": "short02",
                         "hair_rgb": (0.15, 0.1, 0.06), "brows": "eyebrow005", "eyes": "blue",
-                        "skin": "young_caucasian_male", "face": 0.75},
+                        "skin": "young_caucasian_male", "face": 0.75, "tone": (1.0, 0.9, 0.84)},
                   outfit=[garment("male_casualsuit02", top=(0.035, 0.035, 0.04), legs=(0.04, 0.04, 0.045),
                                   top_rough=0.9, top_gain=0.8, legs_gain=0.9),
                           turtleneck(), cap8((0.05, 0.05, 0.055)), shoes("shoes05", (0.05, 0.05, 0.05))]),
     "maxim": dict(spec={"muscle": 0.4, "weight": 0.4, "height": -0.1, "seed": 53, "hair": "short03",
                         "hair_rgb": (0.32, 0.22, 0.12), "brows": "eyebrow002", "eyes": "blue",
-                        "skin": "young_caucasian_male", "face": 0.6, "child": 0.15},
+                        "skin": "young_caucasian_male", "face": 0.6, "child": 0.15, "tone": (1.0, 0.91, 0.86)},
                   outfit=[garment("male_casualsuit01"), shoes("shoes02")]),
 }
 
