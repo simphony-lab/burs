@@ -258,49 +258,67 @@ def fur(name, rgb):
 
 
 def cap8(rgb=(0.1, 0.095, 0.09)):
-    """90s eight-panel cap that sits on the forehead and hugs the skull; slightly full crown, short visor."""
+    """'Khuliganka' eight-panel cap: low band on the forehead, wide flat crown that overhangs the sides and
+    droops forward over a short visor."""
 
     def f(h):
-        fit = HeadFit(h, brow_gap=0.016, back_drop=0.05, hair_squash=0.6)
+        fit = HeadFit(h, brow_gap=0.02, back_drop=0.05, hair_squash=0.6)
         hide_hair_under(h, fit)
-        rings = []
-        n = 11
-        ztop = fit.top_z - 0.002
-        for j in range(n):
-            t = j / (n - 1)
-            u = fit.umax * 0.86 * t
-            # band hugs the head, the crown flares out above it and stays wide up to a flat top
-            flare = min(1.0, max(0.0, (t - 0.25) / 0.55))
-            flare = flare * flare * (3 - 2 * flare)
-            puff = 0.008 + 0.042 * flare
-            fwd = 0.04 * flare
-            u_shape = min(u, fit.umax * 0.5)
-            r = fit.ring(u_shape, extra=puff, fwd=fwd)
-            zt = ztop - 0.012 * (1 - t)
-            r = [(x, y, z0 + u if t < 0.999 else ztop) for (x, y, z0) in
-                 [(px, py, float(fit.zcut(py))) for px, py, _ in r]]
-            r = [(x, y, min(z, ztop - 0.014 * max(0.0, (fit.ctr.y - y) / 0.12))) for x, y, z in r]
-            # 8 seams
-            r = [(fit.ctr.x + (x - fit.ctr.x) * (1 - 0.01 * (0.5 + 0.5 * math.cos(8 * 2 * math.pi * i / len(r)))),
-                  fit.ctr.y + (y - fit.ctr.y) * (1 - 0.01 * (0.5 + 0.5 * math.cos(8 * 2 * math.pi * i / len(r)))), z)
-                 for i, (x, y, z) in enumerate(r)]
-            rings.append(r)
-        for s_, dz in ((0.72, 0.003), (0.36, 0.006)):
-            base = rings[-1]
-            cx_ = sum(p[0] for p in base) / len(base)
-            cy_ = sum(p[1] for p in base) / len(base)
-            rings.append([(cx_ + (x - cx_) * s_, cy_ + (y - cy_) * s_, ztop + dz) for x, y, z in base])
-        v, fcs = _rings_to_mesh(rings)
+        cx, cy, rx, ry = fit.section(fit.umax * 0.45)
+        ztop = fit.top_z + 0.01
+        segs = 72
+        prof_rings = []
+        # band: hugs the head for ~2.5 cm
+        for u, ex in ((0.0, 0.009), (0.025, 0.011)):
+            prof_rings.append(fit.ring(u, extra=ex, segs=segs))
+        band_top = prof_rings[-1]
+        # crown: the wide rim sits low (just above the band, over the temples), then a soft flat dome on top
+        rings_spec = [  # (radius factor, height above band top at the rim .. dome)
+            (0.9, 0.006), (1.0, 0.018), (0.98, 0.03), (0.86, None), (0.62, None), (0.32, None), (0.1, None)]
+        crown = []
+        for k, (rf, dz) in enumerate(rings_spec):
+            r = []
+            for i in range(segs):
+                a_ = 2 * math.pi * i / segs
+                front = max(0.0, math.cos(a_))
+                Rx = (rx + 0.055 + 0.01 * front) * rf
+                Ry = (ry + 0.05 + 0.022 * front) * rf
+                x = cx + math.sin(a_) * Rx
+                y = cy - 0.01 - math.cos(a_) * Ry - 0.02 * front * rf
+                zb = band_top[i][2]
+                if dz is not None:
+                    z = zb + dz - 0.012 * front
+                else:
+                    tdome = {0.86: 0.55, 0.62: 0.85, 0.32: 0.97, 0.1: 1.0}[rf]
+                    z0 = zb + 0.03 - 0.012 * front
+                    z = z0 + (ztop - 0.008 * front - z0) * tdome
+                r.append((x, y, z))
+            crown.append(r)
+        rings = prof_rings + crown
+        # 8 seams: tiny radial dips
+        out = []
+        for j, r in enumerate(rings):
+            if j < 2:
+                out.append(r)
+                continue
+            rr = []
+            for i, (x, y, z) in enumerate(r):
+                s = 1 - 0.006 * (0.5 + 0.5 * math.cos(8 * 2 * math.pi * i / segs))
+                rr.append((cx + (x - cx) * s, cy + (y - cy) * s, z - 0.002 * (0.5 + 0.5 * math.cos(8 * 2 * math.pi * i / segs))))
+            out.append(rr)
+        v, fcs = _rings_to_mesh(out)
         mat = wool(h.name + "_cap", rgb, 420.0)
-        crown = _obj(h.name + "_cap", v, fcs, mat, solid=0.003, subsurf=2)
-        vv, ff = visor_mesh(fit, 0.011, length=0.058)
+        crown_ob = _obj(h.name + "_cap", v, fcs, mat, solid=0.003, subsurf=2)
+        vv, ff = visor_mesh(fit, 0.011, length=0.05, droop=0.016, span=0.34)
         visor = _obj(h.name + "_visor", vv, ff, wool(h.name + "_visorm", tuple(c * 0.85 for c in rgb), 500.0),
                      solid=0.005, subsurf=1)
-        top = rings[-1]
-        cxy = (sum(p[0] for p in top) / len(top), sum(p[1] for p in top) / len(top), max(p[2] for p in top))
-        bv, bf = _lathe("b", [(0.009, 0.0), (0.008, 0.004), (0.003, 0.007)], 16)
-        btn = _obj(h.name + "_btn", [(x + cxy[0], y + cxy[1], z + cxy[2] - 0.002) for x, y, z in bv], bf, mat, subsurf=0)
-        for ob in (crown, visor, btn):
+        top = out[-1]
+        tx = sum(p[0] for p in top) / len(top)
+        ty = sum(p[1] for p in top) / len(top)
+        tz = max(p[2] for p in top)
+        bv, bf = _lathe("b", [(0.008, 0.0), (0.007, 0.003), (0.002, 0.005)], 16)
+        btn = _obj(h.name + "_btn", [(x + tx, y + ty, z + tz - 0.002) for x, y, z in bv], bf, mat, subsurf=0)
+        for ob in (crown_ob, visor, btn):
             h.attach_to_bone(ob, "head")
     return f
 
@@ -316,7 +334,7 @@ def fur_hat(rgb=(0.11, 0.075, 0.05)):
         R = max(rx, ry * 0.92)
         rings = []
         height = (fit.top_z - fit.z_front) + 0.03
-        n = 10
+        n = 16
         for j in range(n):
             t = j / (n - 1)
             if t < 0.82:
@@ -325,10 +343,10 @@ def fur_hat(rgb=(0.11, 0.075, 0.05)):
                 r = [(x, y, z + height * t / 0.82 * (1 - 0.15 * (z - fit.z_front + fit.back_drop) / 0.2))
                      for x, y, z in r]
             else:
-                k = (t - 0.82) / 0.18
-                rr = 1 - 0.75 * k ** 1.6
+                k = min(1.0, (t - 0.82) / 0.18)
+                rr = max(0.0, math.cos(k * math.pi / 2)) ** 0.7
                 base = fit.ring(0.0, extra=base_extra + 0.012)
-                ztop = fit.z_front + height + 0.012 * math.sin(math.pi * k * 0.5)
+                ztop = fit.z_front + height + 0.018 * math.sin(k * math.pi / 2)
                 r = [(cx + (x - cx) * rr, cy + (y - cy) * rr, ztop) for x, y, z in base]
             rings.append(r)
         # fur unevenness
@@ -365,13 +383,25 @@ def beanie(rgb=(0.035, 0.035, 0.04)):
         b.inputs["Roughness"].default_value = 0.95
         b.inputs["Sheen Weight"].default_value = 0.2
         b.inputs["Sheen Tint"].default_value = (0.3, 0.3, 0.32, 1)
-        wv = nt.nodes.new("ShaderNodeTexWave")
-        wv.wave_type = "BANDS"
-        wv.bands_direction = "X"
-        wv.inputs["Scale"].default_value = 60.0
+        tc = nt.nodes.new("ShaderNodeTexCoord")
+        sub = nt.nodes.new("ShaderNodeVectorMath")
+        sub.operation = "SUBTRACT"
+        sub.inputs[1].default_value = (0.5, 0.5, 0.5)
+        nt.links.new(tc.outputs["Generated"], sub.inputs[0])
+        grad = nt.nodes.new("ShaderNodeTexGradient")
+        grad.gradient_type = "RADIAL"
+        nt.links.new(sub.outputs[0], grad.inputs["Vector"])
+        mul = nt.nodes.new("ShaderNodeMath")
+        mul.operation = "MULTIPLY"
+        mul.inputs[1].default_value = 2 * math.pi * 90
+        nt.links.new(grad.outputs["Fac"], mul.inputs[0])
+        sn = nt.nodes.new("ShaderNodeMath")
+        sn.operation = "SINE"
+        nt.links.new(mul.outputs[0], sn.inputs[0])
         bp = nt.nodes.new("ShaderNodeBump")
-        bp.inputs["Strength"].default_value = 0.6
-        nt.links.new(wv.outputs[1], bp.inputs["Height"])
+        bp.inputs["Strength"].default_value = 0.35
+        bp.inputs["Distance"].default_value = 0.002
+        nt.links.new(sn.outputs[0], bp.inputs["Height"])
         nt.links.new(bp.outputs[0], b.inputs["Normal"])
         ob = _obj(h.name + "_beanie", v, fcs, m, solid=0.004)
         h.attach_to_bone(ob, "head")
