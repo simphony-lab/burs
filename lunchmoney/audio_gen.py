@@ -17,7 +17,42 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 API = "https://api.elevenlabs.io/v1"
 VOICES = json.load(open(os.path.join(HERE, "voices.json")))
 
+# delivery after generation: younger pitch without chipmunk timbre (formants preserved) + a bit faster tempo,
+# measured against a real series (teen voices 130-150 Hz, 6.6-8.2 syllables/s)
+DELIVERY = {
+    "bob": {"pitch": 1.0, "tempo": 1.08},
+    "john": {"pitch": 3.0, "tempo": 1.12},
+    "karim": {"pitch": 3.0, "tempo": 1.12},
+    "artem": {"pitch": 3.0, "tempo": 1.15},
+    "maxim": {"pitch": 2.0, "tempo": 1.1},
+    "hoodie": {"pitch": 3.0, "tempo": 1.05},
+    "kids": {"pitch": 3.0, "tempo": 1.05},
+}
+
 SCENES = {
+    "street1": {
+        # scene 1 opening, outdoors by the school. '+' marks the stressed vowel.
+        "lines": [
+            ("s1_bob1", "bob", "Зн+ачит, договор+ились. Джон, ост+анешься здесь."),
+            ("s1_john1", "john", "А ты куд+а?"),
+            ("s1_bob2", "bob", "Мы с пац+анами вернёмся в сво+ю шк+олу. У нас там как раз перем+ена ск+оро."),
+            ("s1_john2", "john", "[annoyed] И что мне здесь д+елать?"),
+            ("s1_bob3", "bob", "Посмотр+и, как у них ид+ут дел+а. Познак+омься побл+иже с м+естными. "
+                               "+Если что-то изм+енится или появ+ятся вопр+осы — сообщ+ишь мне."),
+            ("s1_maxim1", "maxim", "Да всё норм+ально б+удет."),
+            ("s1_john3", "john", "[coldly, quietly] Я не теб+е вопр+ос задав+ал."),
+            ("s1_bob4", "bob", "[calmly] Джон, спок+ойно, спок+ойно, не кип+ишуй. Пр+осто послед+и за обстан+овкой, хорош+о?"),
+            ("s1_john4", "john", "[reluctantly] Л+адно. Б+уду на св+язи."),
+        ],
+        "sfx": [
+            ("amb_yard1", "Outdoor winter schoolyard during a break, light cold wind, distant kids shouting and playing, "
+                          "distant city traffic, a crow, no music", 22.0),
+            ("amb_yard2", "Quiet winter street next to a school, wind, far away voices of teenagers, a car passing "
+                          "in the distance, snow, no music", 22.0),
+            ("snow_steps", "A teenager shifting his weight and stepping on packed snow, crunching footsteps, close", 4.0),
+        ],
+        "isolate": ["maxim"],
+    },
     "test": {
         "lines": [
             ("bob1", "bob", "[calm, low] Значит, договорились. Джон, останешься здесь."),
@@ -76,12 +111,11 @@ def isolate(key, src, dst):
         raise RuntimeError(out.stderr)
 
 
-def trim(src, dst, pitch=0):
+def trim(src, dst, pitch=0.0, tempo=1.0):
     af = ["silenceremove=start_periods=1:start_threshold=-45dB", "areverse",
           "silenceremove=start_periods=1:start_threshold=-45dB", "areverse"]
-    if pitch:
-        r = 2 ** (pitch / 12)
-        af = [f"asetrate={int(44100 * r)}", "aresample=44100", f"atempo={1 / r:.4f}"] + af
+    if pitch or tempo != 1.0:
+        af.append(f"rubberband=pitch={2 ** (pitch / 12):.5f}:tempo={tempo:.4f}:formant=preserved:transients=smooth")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", src, "-af", ",".join(af), "-ac", "1", "-ar", "44100", dst],
                    check=True)
 
@@ -116,7 +150,8 @@ def main():
                 isolate(key, raw, iso)
             src = iso
         wav = os.path.join(args.out, f"{lid}.wav")
-        trim(src, wav, VOICES.get("pitch", {}).get(who, 0))
+        dl = DELIVERY.get(who, {})
+        trim(src, wav, dl.get("pitch", 0.0), dl.get("tempo", 1.0))
         meta["lines"][lid] = {"who": who, "text": text, "file": wav, "duration": duration(wav)}
         print(lid, who, round(meta["lines"][lid]["duration"], 2), flush=True)
     for sid, prompt, dur in sc["sfx"]:
