@@ -240,21 +240,51 @@ class Street:
                 box(f"flatsroof{i}", x - L / 2 - 0.2, x + L / 2 + 0.2, y - 0.2, y + 12.2, 15.5, 15.8, m["roof"])
 
     def birch(self, p, h):
+        """Whole tree as one mesh (trunk + branches + twigs) built with bmesh: fast."""
+        import bmesh
+        from mathutils import Matrix
         m = self.m
         p = Vector(p)
-        cyl("trunk", p, p + Vector((self.r.uniform(-0.3, 0.3), self.r.uniform(-0.3, 0.3), h)), 0.13, m["birch"], 12)
+        bm = bmesh.new()
+        twig_faces = []
+
+        def add(p0, p1, r, segs, twig=False):
+            d = p1 - p0
+            if d.length < 1e-4:
+                return
+            rot = d.to_track_quat("Z", "Y").to_matrix().to_4x4()
+            mat = Matrix.Translation((p0 + p1) / 2) @ rot
+            res = bmesh.ops.create_cone(bm, cap_ends=False, segments=segs, radius1=r, radius2=r * 0.6,
+                                        depth=d.length, matrix=mat)
+            if twig:
+                faces = {f for v in res["verts"] for f in v.link_faces}
+                twig_faces.extend(faces)
+
+        top = p + Vector((self.r.uniform(-0.3, 0.3), self.r.uniform(-0.3, 0.3), h))
+        add(p, top, 0.13, 12)
         for k in range(26):
             t = self.r.uniform(0.35, 0.95)
-            base = p + Vector((0, 0, h * t))
+            base = p + (top - p) * t
             a = self.r.uniform(0, 2 * math.pi)
             L = (1 - t) * h * 0.55 + 0.6
             d = Vector((math.cos(a), math.sin(a), self.r.uniform(0.6, 1.4))).normalized()
             end = base + d * L
-            cyl("branch", base, end, 0.04 * (1 - t) + 0.012, m["birch"] if t < 0.6 else m["twig"], 6)
+            add(base, end, 0.04 * (1 - t) + 0.012, 6, twig=t >= 0.6)
             for j in range(3):
                 b2 = base + (end - base) * self.r.uniform(0.4, 0.9)
-                d2 = (d + Vector((self.r.uniform(-0.8, 0.8), self.r.uniform(-0.8, 0.8), self.r.uniform(-0.6, 0.2)))).normalized()
-                cyl("twig", b2, b2 + d2 * L * 0.35, 0.008, m["twig"], 5)
+                d2 = (d + Vector((self.r.uniform(-0.8, 0.8), self.r.uniform(-0.8, 0.8),
+                                  self.r.uniform(-0.6, 0.2)))).normalized()
+                add(b2, b2 + d2 * L * 0.35, 0.008, 4, twig=True)
+        me = bpy.data.meshes.new("birch")
+        for f in twig_faces:
+            if f.is_valid:
+                f.material_index = 1
+        bm.to_mesh(me)
+        bm.free()
+        me.materials.append(m["birch"])
+        me.materials.append(m["twig"])
+        ob = bpy.data.objects.new("birch", me)
+        bpy.context.scene.collection.objects.link(ob)
 
     def _lamp_post(self, p):
         m = self.m

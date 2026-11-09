@@ -556,13 +556,13 @@ def coat_skirt(rgb=(0.025, 0.022, 0.02), length=0.42):
 # ---------------------------------------------------------------------------- the cast
 
 CAST = {
-    "bob": dict(spec={"muscle": 0.7, "weight": 0.78, "height": 0.6, "seed": 11, "hair": "short04",
+    "bob": dict(spec={"muscle": 0.7, "weight": 0.78, "height": 0.32, "seed": 11, "hair": "short04",
                       "hair_rgb": (0.04, 0.03, 0.022), "brows": "eyebrow007", "eyes": "brown",
                       "skin": "young_caucasian_male2", "face": 0.7, "tone": (1.0, 0.9, 0.84)},
                 outfit=[garment("male_casualsuit05", top=(0.05, 0.045, 0.042), legs=(0.06, 0.06, 0.065), top_rough=0.5,
                                 top_coat=0.12, top_gain=1.0),
                         coat_skirt(), sweater_collar((0.12, 0.11, 0.1)), fur_hat(), shoes("shoes01", (0.05, 0.04, 0.035))]),
-    "john": dict(spec={"muscle": 0.55, "weight": 0.5, "height": 0.35, "seed": 23, "hair": "short02",
+    "john": dict(spec={"muscle": 0.55, "weight": 0.5, "height": 0.2, "seed": 23, "hair": "short02",
                        "hair_rgb": (0.08, 0.06, 0.05), "brows": "eyebrow010", "eyes": "grey",
                        "skin": "young_caucasian_male", "face": 0.8, "tone": (1.0, 0.9, 0.84)},
                  outfit=[garment("male_casualsuit05", top=(0.07, 0.08, 0.13), legs=(0.08, 0.08, 0.1), top_rough=0.75),
