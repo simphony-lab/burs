@@ -23,7 +23,116 @@ VOICES = json.load(open(os.path.join(HERE, "voices.json")))
 # (Younger / faster delivery must come from the voice itself and the text, not from DSP.)
 DELIVERY = {}
 
+KIDS = {"kid1": "bg9LrEYQkRYwqkxA8VOy", "kid2": "gJEfHTTiifXEDmO687lC", "kid3": "6A9D8WSMm4rFsg2DWFeE",
+        "kid4": "bg9LrEYQkRYwqkxA8VOy", "kid5": "gJEfHTTiifXEDmO687lC", "kid6": "6A9D8WSMm4rFsg2DWFeE",
+        "kid7": "bg9LrEYQkRYwqkxA8VOy"}
+
+# Whole episode "Первая смена". '+' goes right before the stressed vowel (пацан+ами = пацанАми).
+EPISODE_LINES = [
+    # scene 1, street by the school
+    ("s1_01", "bob", "Зн+ачит, договор+ились. Джон, ост+анешься здесь."),
+    ("s1_02", "john", "А ты куд+а?"),
+    ("s1_03", "bob", "Мы с пацан+ами вернёмся в сво+ю шк+олу. У нас там как раз перем+ена ск+оро."),
+    ("s1_04", "john", "[annoyed] И что мне здесь д+елать?"),
+    ("s1_05", "bob", "Посмотр+и, как у них ид+ут дел+а. Познак+омься побл+иже с м+естными. "
+                     "+Если что-то изм+енится или появ+ятся вопр+осы — сообщ+ишь мне."),
+    ("s1_06", "maxim", "Да всё норм+ально б+удет."),
+    ("s1_07", "john", "[coldly, quietly] Я не теб+е вопр+ос задав+ал."),
+    ("s1_08", "bob", "[calmly] Джон, спок+ойно, спок+ойно, не кипиш+уй. Пр+осто послед+и за обстан+овкой, хорош+о?"),
+    ("s1_09", "john", "[reluctantly] Л+адно. Б+уду на св+язи."),
+    ("s1_10", "bob", "Макс+им, +если что, обращ+айтесь к нем+у. Он от н+ашей комп+ании."),
+    ("s1_11", "maxim", "Пон+ял."),
+    ("s1_12", "karim", "Ну что, дом+ой?"),
+    ("s1_13", "bob", "Нет. В шк+олу. У нас там т+оже дел+а."),
+    ("s1_14", "artem", "Над+еюсь, сег+одня без приключ+ений."),
+    ("s1_15", "bob", "Посм+отрим."),
+    # scene 2, main school, break
+    ("s2_01", "artem", "О, смотр+и, уж+е все в+ышли."),
+    ("s2_02", "karim", "Сег+одня нар+оду м+ного."),
+    ("s2_03", "bob", "Зн+ачит, д+олго ход+ить не придётся."),
+    ("s2_04", "bob", "Д+авайте без л+ишней сует+ы."),
+    ("s2_05", "artem", "Пон+ял."),
+    # scene 3, three tables
+    ("s3_01", "bob", "Здор+ово, пацан+ы."),
+    ("s3_02", "kid1", "[shyly] Здр+авствуйте…"),
+    ("s3_03", "bob", "Как lunch money сег+одня? С соб+ой вз+яли?"),
+    ("s3_04", "kid2", "[unsure] Да…"),
+    ("s3_05", "bob", "Ну, тогд+а вы зн+аете, что д+елать."),
+    ("s3_06", "artem", "Ч+етверо. Норм+ально."),
+    ("s3_07", "bob", "Хор+ошего об+еда, пацан+ы."),
+    ("s3_08", "bob", "Здор+ово. Lunch money есть?"),
+    ("s3_09", "kid3", "Да, сейч+ас."),
+    ("s3_10", "karim", "Д+авайте без зад+ержек."),
+    ("s3_11", "artem", "Б+ыстро сег+одня."),
+    ("s3_12", "bob", "Пошл+и д+альше."),
+    ("s3_13", "artem", "Эй, ты чег+о там пр+ячешь?"),
+    ("s3_14", "kid4", "[scared] Ничег+о…"),
+    ("s3_15", "bob", "Не н+адо д+елать вид, что не поним+аешь, зач+ем мы подошл+и."),
+    ("s3_16", "karim", "Всё, своб+одны."),
+    ("s3_17", "kid5", "[whispering] Он+и сег+одня б+ыстро…"),
+    ("s3_18", "artem", "Что сказ+ал?"),
+    ("s3_19", "kid5", "[scared] Ничег+о."),
+    ("s3_20", "bob", "Вот и хорош+о."),
+    ("s3_21", "karim", "Три стол+а, и ни одног+о серьёзного разгов+ора."),
+    ("s3_22", "artem", "Я же говор+ил, сег+одня б+ыстро б+удет."),
+    ("s3_23", "bob", "Не р+адуйся р+аньше вр+емени. Ещё не зак+ончили."),
+    # scene 4, corridor by the canteen
+    ("s4_01", "artem", "Ты чег+о упёрся?"),
+    ("s4_02", "hoodie", "Я не б+уду вам ничег+о отдав+ать."),
+    ("s4_03", "karim", "Боб, тут пробл+ема."),
+    ("s4_04", "bob", "Как теб+я зов+ут?"),
+    ("s4_05", "hoodie", "Нев+ажно."),
+    ("s4_06", "bob", "Хорош+о. Тогд+а д+авай без представл+ений. Ты поним+аешь, что сейч+ас происх+одит?"),
+    ("s4_07", "hoodie", "Поним+аю. Вы д+еньги забир+аете."),
+    ("s4_08", "bob", "Тогд+а не н+адо усложн+ять."),
+    ("s4_09", "hoodie", "А +если я не хоч+у?"),
+    ("s4_10", "artem", "Сл+ушай, ты д+олго ещё—"),
+    ("s4_11", "bob", "Артём, подожд+и."),
+    ("s4_12", "hoodie", "[louder] Это мо+и д+еньги! Я ником+у ничег+о не д+олжен!"),
+    ("s4_13", "bob", "Разбер+итесь с ситу+ацией."),
+    ("s4_14", "karim", "Всё."),
+    ("s4_15", "bob", "Д+еньги?"),
+    ("s4_16", "karim", "Забр+али."),
+    ("s4_17", "artem", "Вот теп+ерь м+ожно идт+и."),
+    # scene 5, end of the break
+    ("s5_01", "kid6", "[whispering] Это Больш+ой Боб."),
+    ("s5_02", "kid7", "[whispering] Я зн+аю."),
+    ("s5_03", "kid6", "[whispering] Сег+одня л+учше в+ообще не сп+орить."),
+    ("s5_04", "bob", "Ну что, пацан+ы, как об+ед?"),
+    ("s5_05", "karim", "Вот так."),
+    ("s5_06", "artem", "В+идишь, Боб? Теп+ерь д+аже объясн+ять ничег+о не н+адо."),
+    ("s5_07", "bob", "Пох+оже, все уж+е пон+яли, как тут всё устр+оено."),
+    ("s5_08", "bob", "Л+адно, пошл+и. На сег+одня дост+аточно."),
+    ("s5_09", "karim", "А з+автра?"),
+    ("s5_10", "bob", "З+автра б+удет з+автра."),
+]
+
+EPISODE_SFX = [
+    ("amb_yard1", "Outdoor winter schoolyard during a break, light cold wind, distant kids shouting and playing, "
+                  "distant city traffic, a crow, no music", 22.0),
+    ("amb_yard2", "Quiet winter street next to a school, wind, far away voices of teenagers, a car passing "
+                  "in the distance, snow, no music", 22.0),
+    ("snow_steps", "A teenager shifting his weight and stepping on packed snow, crunching footsteps, close", 4.0),
+    ("snow_walk", "Three people walking away on packed snow, crunching footsteps fading", 6.0),
+    ("zipper", "A leather coat zipper being zipped up, close", 2.0),
+    ("amb_hall1", "Busy school corridor during a break, many kids talking and laughing, footsteps, echo, no music", 22.0),
+    ("amb_hall2", "School hallway crowd during recess, children chatter, sneakers squeaking, distant shouts, no music",
+     22.0),
+    ("bell", "Old electric school bell ringing loudly in a corridor", 5.0),
+    ("door", "Heavy school entrance door opening and closing", 3.0),
+    ("amb_canteen1", "School canteen during lunch, kids talking at tables, cutlery and plates clinking, trays, echo, "
+                     "no music", 22.0),
+    ("amb_canteen2", "Cafeteria murmur, children eating and chatting quietly, spoons on plates, no music", 22.0),
+    ("money", "Paper banknotes and coins being taken out of a pocket and handed over, rustle", 3.0),
+    ("count", "Someone quickly counting paper banknotes", 3.0),
+    ("wallet", "A cheap wallet with velcro being opened", 2.0),
+    ("locker_slam", "A metal school locker door slammed shut hard, bang, rattling", 2.0),
+    ("scuffle", "Short scuffle in a corridor, clothes rustling, sneakers squeaking, a muffled bump against metal", 4.0),
+    ("steps_indoor", "Group of teenagers walking in a school corridor, footsteps on linoleum", 6.0),
+]
+
 SCENES = {
+    "episode": {"lines": EPISODE_LINES, "sfx": EPISODE_SFX, "isolate": []},
     "street1": {
         # scene 1 opening, outdoors by the school. '+' marks the stressed vowel.
         "lines": [
@@ -129,7 +238,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     meta = {"lines": {}, "sfx": {}}
     for lid, who, text in sc["lines"]:
-        vid = VOICES["voices"][who]
+        vid = KIDS.get(who) or VOICES["voices"][who]
         tag = hashlib.sha1(f"{vid}|{text}".encode()).hexdigest()[:10]
         raw = os.path.join(args.out, f"{lid}_{tag}.mp3")
         if not os.path.exists(raw):

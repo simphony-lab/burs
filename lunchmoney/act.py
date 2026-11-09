@@ -160,7 +160,7 @@ class Actor:
             f += self.r.randint(55, 110)
 
     def lipsync(self, wav, t0):
-        env = envelope(wav)
+        env = envelope(wav) if isinstance(wav, str) else wav
         f0 = F(t0)
         self.h.key("mouth-open", f0 - 2, 0.0)
         prev = 0.0
@@ -275,3 +275,70 @@ def iter_fcurves(action):
         for strip in layer.strips:
             for bag in getattr(strip, "channelbags", []):
                 yield from bag.fcurves
+
+
+def fix_quaternions(arm):
+    """Make consecutive quaternion keys of every bone lie in the same hemisphere (q and -q are the same rotation,
+    mixing them makes bones spin/jitter between keys), and use smooth interpolation."""
+    ad = arm.animation_data
+    if not ad or not ad.action:
+        return
+    groups = {}
+    for fc in iter_fcurves(ad.action):
+        if fc.data_path.endswith("rotation_quaternion"):
+            groups.setdefault(fc.data_path, {})[fc.array_index] = fc
+    for path, comps in groups.items():
+        if len(comps) != 4:
+            continue
+        frames = sorted({kp.co[0] for kp in comps[0].keyframe_points})
+        prev = None
+        for fr in frames:
+            q = [comps[i].evaluate(fr) for i in range(4)]
+            kps = [next((kp for kp in comps[i].keyframe_points if abs(kp.co[0] - fr) < 1e-3), None) for i in range(4)]
+            if prev is not None and sum(a * b for a, b in zip(q, prev)) < 0:
+                q = [-c for c in q]
+                for i in range(4):
+                    if kps[i] is not None:
+                        kps[i].co[1] = q[i]
+            prev = q
+        for fc in comps.values():
+            for kp in fc.keyframe_points:
+                kp.interpolation = "BEZIER"
+                kp.handle_left_type = "AUTO_CLAMPED"
+                kp.handle_right_type = "AUTO_CLAMPED"
+            fc.update()
+
+
+def seat(actor, f, seat_xy, seat_z, yaw, hands_on_table=True):
+    """Sit on a bench: hips at seat height, thighs forward, shins down, hands on the table."""
+    h = actor.h
+    hip = h.arm.data.bones["pelvis"].head_local.z
+    knee = h.arm.data.bones["calf_l"].head_local.z
+    actor.pos = Vector((seat_xy[0], seat_xy[1], 0))
+    actor.yaw = yaw
+    h.arm.location = (seat_xy[0], seat_xy[1], seat_z - hip + 0.04)
+    h.arm.rotation_euler = (0, 0, math.radians(yaw))
+    h.arm.keyframe_insert("location", frame=f)
+    h.arm.keyframe_insert("rotation_euler", frame=f)
+    for s in ("l", "r"):
+        h.rot(f"thigh_{s}", f, (-86, 0, 0))
+        h.rot(f"calf_{s}", f, (84, 0, 0))
+        h.rot(f"foot_{s}", f, (-6, 0, 0))
+    if hands_on_table:
+        actor.arm("l", f, 42, 30, 62, out=-8)
+        actor.arm("r", f, 42, 30, 62, out=-8)
+
+
+def reach(actor, side, f0, dur=10, hold=8, fwd=58, down=26, elbow=22):
+    """Hand something over / take something: arm goes forward and back."""
+    actor.arm(side, f0, 0, 38, 0)
+    actor.arm(side, f0 + dur // 2, fwd, down, elbow)
+    actor.arm(side, f0 + dur // 2 + hold, fwd, down, elbow)
+    actor.arm(side, f0 + dur + hold, 0, 38, 0)
+
+
+def reach_seated(actor, side, f0, dur=10, hold=8):
+    actor.arm(side, f0, 42, 30, 62, out=-8)
+    actor.arm(side, f0 + dur // 2, 75, 22, 25, out=-5)
+    actor.arm(side, f0 + dur // 2 + hold, 75, 22, 25, out=-5)
+    actor.arm(side, f0 + dur + hold, 42, 30, 62, out=-8)
