@@ -328,6 +328,7 @@ class Hall:
         m["food"] = H.plain_material("food", (0.75, 0.55, 0.3), rough=0.7)
         m["sign"] = H.plain_material("hsign", (0.92, 0.92, 0.9), rough=0.5)
         m["red"] = H.plain_material("hred", (0.7, 0.05, 0.04), rough=0.3)
+        m["snow"] = H.plain_material("hsnow", (0.86, 0.88, 0.92), rough=0.6)
         self.tables = []
         self.locker_doors = []
         self.build()
@@ -338,14 +339,42 @@ class Hall:
         X0, X1, Y0, Y1, Hh, P = self.X0, self.X1, self.Y0, self.Y1, self.HGT, self.PANEL
         box("hfloor", X0, X1, Y0, Y1, -0.05, 0, mt["floor"])
         box("hceiling", X0, X1, Y0, Y1, Hh, Hh + 0.05, mt["ceiling"])
-        for (a0, a1, b0, b1) in ((X0 - 0.15, X0, Y0, Y1), (X1, X1 + 0.15, Y0, Y1), (X0, X1, Y1, Y1 + 0.15),
-                                 (X0, X1, Y0 - 0.15, Y0)):
+        DX0, DX1, DZ = -0.82, 0.82, 2.25  # entrance opening in the south wall
+        for (a0, a1, b0, b1) in ((X0 - 0.15, X0, Y0, Y1), (X1, X1 + 0.15, Y0, Y1), (X0, X1, Y1, Y1 + 0.15)):
             box("hwall_lo", a0, a1, b0, b1, 0, P, mt["paint"])
             box("hwall_hi", a0, a1, b0, b1, P, Hh, mt["white"])
-        # entrance doors (south wall)
-        for dx in (-0.8, 0.0):
-            box("hdoor", dx, dx + 0.78, Y0, Y0 + 0.05, 0.01, 2.2, mt["door"], bevel=0.004)
-            box("hdoorwin", dx + 0.15, dx + 0.63, Y0 + 0.05, Y0 + 0.055, 1.2, 1.95, mt["glass"])
+        for (a0, a1) in ((X0, DX0), (DX1, X1)):
+            box("hwall_lo", a0, a1, Y0 - 0.15, Y0, 0, P, mt["paint"])
+            box("hwall_hi", a0, a1, Y0 - 0.15, Y0, P, Hh, mt["white"])
+        box("hwall_hi", DX0, DX1, Y0 - 0.15, Y0, DZ, Hh, mt["white"])
+        # door frame
+        for a0, a1 in ((DX0 - 0.06, DX0), (DX1, DX1 + 0.06)):
+            box("hdframe", a0, a1, Y0 - 0.17, Y0 + 0.02, 0, DZ + 0.06, mt["frame"])
+        box("hdframe", DX0 - 0.06, DX1 + 0.06, Y0 - 0.17, Y0 + 0.02, DZ, DZ + 0.06, mt["frame"])
+        # two door leaves hinged at the frame, opening inwards (rotate the hinge empties)
+        self.entrance_doors = []
+        for x_h, sgn in ((DX0, 1), (DX1, -1)):
+            hinge = bpy.data.objects.new("hdoor_hinge", None)
+            bpy.context.scene.collection.objects.link(hinge)
+            hinge.location = (x_h, Y0 - 0.06, 0)
+            w = (DX1 - DX0) / 2 - 0.01
+            xa, xb = (0.0, w) if sgn > 0 else (-w, 0.0)
+            leaf = box("hdoor", xa, xb, -0.025, 0.025, 0.01, DZ - 0.01, mt["door"], bevel=0.004)
+            win = box("hdoorwin", xa + 0.15, xb - 0.15, -0.03, 0.03, 1.15, 1.95, mt["glass"])
+            for ob in (leaf, win):
+                ob.parent = hinge
+            self.entrance_doors.append((hinge, sgn))
+        # outside: snowy porch and bright winter daylight behind the doors
+        box("hporch", -3.0, 3.0, Y0 - 6.0, Y0 - 0.15, -0.05, 0, mt["snow"])
+        box("hsky_out", -6.0, 6.0, Y0 - 6.2, Y0 - 6.0, -0.5, 4.0, emit("hout", (0.85, 0.88, 0.95), 2.2))
+        lamp = bpy.data.lights.new("hout_l", "AREA")
+        lamp.energy = 400
+        lamp.size = 2.0
+        lamp.color = (0.85, 0.9, 1.0)
+        lo = bpy.data.objects.new("hout_l", lamp)
+        bpy.context.scene.collection.objects.link(lo)
+        lo.location = (0, Y0 - 1.5, 2.4)
+        lo.rotation_euler = (math.radians(-70), 0, 0)
         self.entrance = Vector((0.0, Y0 + 0.4, 0))
         # windows on the east wall
         for y in range(int(Y0) + 2, int(Y1) - 1, 5):
@@ -396,6 +425,13 @@ class Hall:
         w.use_nodes = True
         w.node_tree.nodes["Background"].inputs[0].default_value = (0.7, 0.75, 0.82, 1)
         w.node_tree.nodes["Background"].inputs[1].default_value = 0.35
+
+    def open_doors(self, f_open, f_close, angle=80.0):
+        """Entrance doors swing in (8 frames), stay open, swing shut (10 frames)."""
+        for hinge, sgn in self.entrance_doors:
+            for f, a in ((1, 0.0), (f_open, 0.0), (f_open + 8, angle), (f_close, angle), (f_close + 10, 0.0)):
+                hinge.rotation_euler = (0, 0, math.radians(a * sgn))
+                hinge.keyframe_insert("rotation_euler", frame=f)
 
     def _lockers(self, x, y0, y1):
         mt = self.m

@@ -66,7 +66,6 @@ def scene1():
     p.line("s1_11", 0.3)
     p.mark("hat", 0.3)
     p.wait(2.4)
-    p.fx("zipper", p.ev["hat"] + 1.3, 0.0, 0.35)
     d_end = p.t
     p.line("s1_12", 0.2)
     p.line("s1_13", 0.3)
@@ -116,8 +115,9 @@ def scene3():
     p.line("s3_04", 0.6)
     p.line("s3_05", 0.4)
     p.mark("pay1", 0.2)
-    p.fx("money", p.ev["pay1"] + 0.3, 0.1, 0.35)
-    p.wait(1.6)
+    for dt, pan in ((0.75, 0.1), (1.75, 0.15), (3.35, 0.1)):
+        p.fx("money", p.ev["pay1"] + dt, pan, 0.28)
+    p.wait(4.2)
     p.fx("count", p.t + 0.2, 0.2, 0.35)
     p.line("s3_06", 0.3)
     p.line("s3_07", 0.4)
@@ -128,8 +128,9 @@ def scene3():
     p.line("s3_09", 0.35)
     p.line("s3_10", 0.25)
     p.mark("pay2", 0.1)
-    p.fx("money", p.ev["pay2"] + 0.2, 0.0, 0.35)
-    p.wait(1.1)
+    for dt in (0.65, 1.55):
+        p.fx("money", p.ev["pay2"] + dt, 0.0, 0.28)
+    p.wait(2.4)
     p.line("s3_11", 0.2)
     p.line("s3_12", 0.3)
     b_end = p.t
@@ -140,7 +141,7 @@ def scene3():
     p.line("s3_14", 0.35)
     p.line("s3_15", 0.45)
     p.mark("pay3", 0.3)
-    p.fx("wallet", p.ev["pay3"] + 0.3, 0.0, 0.4)
+    p.fx("money", p.ev["pay3"] + 0.75, 0.0, 0.3)
     p.wait(1.6)
     p.line("s3_16", 0.1)
     w0 = p.line("s3_17", 0.5)[0]
@@ -183,6 +184,7 @@ def scene4():
     t = p.ev["take"]
     p.fx("scuffle", t + 2.6, -0.4, 0.35)
     p.fx("locker_slam", t + 5.3, -0.4, 0.55)
+    p.fx("wallet", t + 4.3, -0.4, 0.3)
     p.wait(6.0)
     p.mark("back")
     p.wait(2.6)
@@ -211,7 +213,8 @@ def scene5():
     p.mark("arrive", -0.2)
     p.line("s5_04", 0.0)
     p.mark("pay", 0.3)
-    p.fx("money", p.ev["pay"] + 0.6, 0.0, 0.35)
+    for dt in (0.55, 1.25):
+        p.fx("money", p.ev["pay"] + dt, 0.0, 0.28)
     p.wait(2.0)
     p.line("s5_05", 0.2)
     p.line("s5_06", 0.4)

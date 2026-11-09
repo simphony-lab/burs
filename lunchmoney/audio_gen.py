@@ -23,8 +23,8 @@ VOICES = json.load(open(os.path.join(HERE, "voices.json")))
 # (Younger / faster delivery must come from the voice itself and the text, not from DSP.)
 DELIVERY = {}
 
-KIDS = {"kid1": "bg9LrEYQkRYwqkxA8VOy", "kid2": "gJEfHTTiifXEDmO687lC", "kid3": "6A9D8WSMm4rFsg2DWFeE",
-        "kid4": "bg9LrEYQkRYwqkxA8VOy", "kid5": "gJEfHTTiifXEDmO687lC", "kid6": "6A9D8WSMm4rFsg2DWFeE",
+KIDS = {"kid1": "bg9LrEYQkRYwqkxA8VOy", "kid2": "Q7Mq2HFFRhXPBkrv9ddL", "kid3": "6A9D8WSMm4rFsg2DWFeE",
+        "kid4": "bg9LrEYQkRYwqkxA8VOy", "kid5": "Q7Mq2HFFRhXPBkrv9ddL", "kid6": "JoMSKT9U9IuvcWwxNJUV",
         "kid7": "bg9LrEYQkRYwqkxA8VOy"}
 
 # Whole episode "Первая смена". '+' goes right before the stressed vowel (пацан+ами = пацанАми).
