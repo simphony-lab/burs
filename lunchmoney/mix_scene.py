@@ -30,8 +30,7 @@ SCENES = {
 
 VOICE_FX = {
     # lav/boom outdoors: low cut, a little warmth, softened top end (real series measured dull above 3-4 kHz)
-    "street": "highpass=f=85,equalizer=f=220:t=q:w=1.0:g=2.5,equalizer=f=3200:t=q:w=1.2:g=-1.5,"
-              "highshelf=f=4500:g=-6,lowpass=f=10500,acompressor=threshold=-18dB:ratio=2:attack=10:release=150",
+    "street": "highpass=f=80,equalizer=f=220:t=q:w=1.0:g=1.5,highshelf=f=6000:g=-2.5",
     "corridor": "highpass=f=85,equalizer=f=250:t=q:w=1.0:g=1.5,highshelf=f=5000:g=-4,"
                 "acompressor=threshold=-18dB:ratio=2:attack=10:release=150",
 }

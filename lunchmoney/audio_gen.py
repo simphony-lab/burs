@@ -19,15 +19,9 @@ VOICES = json.load(open(os.path.join(HERE, "voices.json")))
 
 # delivery after generation: younger pitch without chipmunk timbre (formants preserved) + a bit faster tempo,
 # measured against a real series (teen voices 130-150 Hz, 6.6-8.2 syllables/s)
-DELIVERY = {
-    "bob": {"pitch": 1.0, "tempo": 1.08},
-    "john": {"pitch": 3.0, "tempo": 1.12},
-    "karim": {"pitch": 3.0, "tempo": 1.12},
-    "artem": {"pitch": 3.0, "tempo": 1.15},
-    "maxim": {"pitch": 2.0, "tempo": 1.1},
-    "hoodie": {"pitch": 3.0, "tempo": 1.05},
-    "kids": {"pitch": 3.0, "tempo": 1.05},
-}
+# Post pitch/tempo processing made voices sound robotic, so it is off: voices are used as generated.
+# (Younger / faster delivery must come from the voice itself and the text, not from DSP.)
+DELIVERY = {}
 
 SCENES = {
     "street1": {
@@ -51,7 +45,7 @@ SCENES = {
                           "in the distance, snow, no music", 22.0),
             ("snow_steps", "A teenager shifting his weight and stepping on packed snow, crunching footsteps, close", 4.0),
         ],
-        "isolate": ["maxim"],
+        "isolate": [],
     },
     "test": {
         "lines": [
