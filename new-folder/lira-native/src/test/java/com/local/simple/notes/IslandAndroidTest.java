@@ -99,6 +99,14 @@ public class IslandAndroidTest {
         assertTrue((lp.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) == 0);
         assertTrue(lp.height > idleH);
         assertEquals(1f, o.shape()[3], 0.001f);
+        // the capsule around the camera never takes touches; the body starts below the status bar
+        WindowManager.LayoutParams cl = (WindowManager.LayoutParams) o.capsuleView().getLayoutParams();
+        assertTrue((cl.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0);
+        int sb = app.getResources().getDimensionPixelSize(app.getResources().getIdentifier("status_bar_height", "dimen", "android"));
+        assertTrue("body below the status bar: " + lp.y + " vs " + sb, lp.y >= sb);
+        assertTrue(cl.y + cl.height <= lp.y);
+        assertTrue("capsule is narrow", cl.width < lp.width / 2);
+        assertEquals(1f, o.capsule()[0], 0.001f);
 
         layout(o.view());
         tap(o.view(), lp.width / 2f, lp.height - 10);

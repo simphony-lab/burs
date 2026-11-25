@@ -55,8 +55,8 @@ public class IslandRenderTest {
         p.setColor(dark ? 0xFF222226 : 0xFFE9EBEF);
         for (int i = 0; i < 4; i++) c.drawRoundRect(new RectF(16 * d, (112 + i * 64) * d, w - 16 * d, (164 + i * 64) * d), 14 * d, 14 * d, p);
         // the island window
-        View v = o.view();
-        if (o.isAttached() && v != null) {
+        for (View v : new View[]{o.capsuleView(), o.view()}) {
+            if (!o.isAttached() || v == null) continue;
             WindowManager.LayoutParams lp = (WindowManager.LayoutParams) v.getLayoutParams();
             v.measure(View.MeasureSpec.makeMeasureSpec(lp.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(lp.height, View.MeasureSpec.EXACTLY));
             v.layout(0, 0, lp.width, lp.height);

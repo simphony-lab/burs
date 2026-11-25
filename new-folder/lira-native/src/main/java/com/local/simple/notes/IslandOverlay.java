@@ -75,19 +75,23 @@ final class IslandOverlay {
     private IslandSnapshot snap = new IslandSnapshot();
     private String structure = "";
 
-    private IslandView root;
+    private IslandView root;            // the body under the status bar (touchable)
+    private CapsuleView cap;            // the black capsule around the camera (never takes touches)
     private CompactRow compact;
     private ExpandedPanel panel;
-    private WindowManager.LayoutParams lp;
+    private WindowManager.LayoutParams lp, capLp;
     private boolean attached, dead, fullscreen;
     private int mode = M_HIDDEN;
 
     // geometry, px
-    private int screenW, sbH, top, centerX, idleW, idleH, rowTop, rowH, compactW, compactH, expandedW, expandedH;
+    // top = capsule top; bodyY = where the body starts (just below the status bar, so the status
+    // bar icons on both sides of the camera always stay visible and the shade can be pulled anywhere)
+    private int screenW, sbH, top, centerX, idleW, idleH, bodyY, rowH, compactW, compactH, expandedW, expandedH;
     private boolean landscape;
 
     // shape being drawn
-    private float curW, curH, curR, curA;
+    private float curW, curH, curR, curA;   // body
+    private float capA, capS = 1f;          // capsule alpha and scale
     private ValueAnimator shapeAnim;
     private float press = 1f;
     private ValueAnimator pressAnim;
@@ -122,6 +126,8 @@ final class IslandOverlay {
     boolean isAttached() { return attached; }
     boolean isDead() { return dead; }
     View view() { return root; }
+    View capsuleView() { return cap; }
+    float[] capsule() { return new float[]{capA, capS}; }
     CharSequence compactTitle() { return compact == null ? "" : compact.title.getText(); }
     String compactValue() { return compact == null ? "" : compact.valueText(); }
     int panelRows() { return panel == null ? 0 : panel.rows.size(); }
@@ -177,8 +183,11 @@ final class IslandOverlay {
             float[] target = targetShape(mode);
             if (shapeAnim != null) shapeAnim.cancel();
             curW = target[0]; curH = target[1]; curR = target[2]; curA = target[3];
+            capA = capTarget(mode);
             setWindow(mode, Math.round(curW), Math.round(curH));
+            placeCapsule();
             root.invalidate();
+            cap.invalidate();
         }
     }
 
@@ -199,14 +208,16 @@ final class IslandOverlay {
         return cfg.islandIdle ? M_IDLE : M_HIDDEN;
     }
 
+    /** Body shape {width, height, radius, alpha}; idle and hidden have no body. */
     private float[] targetShape(int m) {
         switch (m) {
-            case M_IDLE: return new float[]{idleW, idleH, idleH / 2f, 1f};
-            case M_COMPACT: return new float[]{compactW, compactH, Math.min(compactH / 2f, dp(27)), 1f};
-            case M_EXPANDED: return new float[]{expandedW, expandedH, dp(34), 1f};
-            default: return new float[]{idleH, idleH, idleH / 2f, 0f};
+            case M_COMPACT: return new float[]{compactW, compactH, compactH / 2f, 1f};
+            case M_EXPANDED: return new float[]{expandedW, expandedH, dp(30), 1f};
+            default: return new float[]{idleW * 0.36f, 0f, 0f, 1f};
         }
     }
+
+    private float capTarget(int m) { return m == M_HIDDEN || (landscape && m == M_IDLE) ? 0f : landscape ? 0f : 1f; }
 
     private void go(int to) {
         if (to != M_HIDDEN && !attached && !attach()) return;
@@ -226,7 +237,7 @@ final class IslandOverlay {
     private void measurePanel() {
         panel.measure(View.MeasureSpec.makeMeasureSpec(expandedW, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        expandedH = Math.max(compactH, panel.getMeasuredHeight());
+        expandedH = Math.max(compactH + dp(20), panel.getMeasuredHeight());
     }
 
     private void resizeExpanded() {
@@ -238,13 +249,12 @@ final class IslandOverlay {
     /** Springs the black shape from where it is now to the target of mode {@code to}. */
     private void animateShape(final int from, final int to) {
         if (shapeAnim != null) shapeAnim.cancel();
-        final float w0 = curW, h0 = curH, r0 = curR, a0 = curA;
+        final float a0 = curA;
         float[] t = targetShape(to);
         final float w1 = t[0], h1 = t[1], r1 = t[2], a1 = t[3];
-        if (from == M_HIDDEN && curA == 0f) { // appear from a dot at the camera
-            curW = idleH * 0.6f; curH = idleH * 0.6f; curR = curH / 2f;
-        }
+        if (curH <= 0.5f) { curW = idleW * 0.36f; curR = 0f; } // the body drops out from under the camera, neck-wide
         final float sw = curW, sh = curH, sr = curR;
+        final float ca0 = capA, ca1 = capTarget(to), cs0 = ca0 == 0f ? 0.6f : capS;
         final float c0 = compact.getAlpha(), p0 = panel.getAlpha();
         final float cTarget = to == M_COMPACT ? 1f : 0f, pTarget = to == M_EXPANDED ? 1f : 0f;
         if (cTarget > 0) compact.setVisibility(View.VISIBLE);
@@ -262,10 +272,14 @@ final class IslandOverlay {
                 curW = sw + (w1 - sw) * v;
                 curH = sh + (h1 - sh) * v;
                 curR = Math.max(1f, sr + (r1 - sr) * v);
+                curH = Math.max(0f, curH);
                 curA = a0 + (a1 - a0) * clamp(p / 0.35f);
+                capA = ca0 + (ca1 - ca0) * clamp(p / 0.4f);
+                capS = cs0 + (1f - cs0) * v;
                 fade(compact, c0, cTarget, p, 0.12f, 0.42f);
                 fade(panel, p0, pTarget, p, 0.18f, 0.45f);
                 root.invalidate();
+                cap.invalidate();
             }
         });
         shapeAnim.addListener(new AnimatorListenerAdapter() {
@@ -274,6 +288,8 @@ final class IslandOverlay {
             @Override public void onAnimationEnd(Animator a) {
                 if (cancelled || dead) return;
                 curW = w1; curH = h1; curR = r1; curA = a1;
+                capA = ca1; capS = 1f;
+                cap.invalidate();
                 fade(compact, c0, cTarget, 1f, 0f, 1f);
                 fade(panel, p0, pTarget, 1f, 0f, 1f);
                 if (cTarget == 0f) compact.setVisibility(View.INVISIBLE);
@@ -322,11 +338,32 @@ final class IslandOverlay {
         lp.width = Math.max(1, w);
         lp.height = Math.max(1, hgt);
         lp.x = centerX - lp.width / 2;
-        lp.y = top;
+        lp.y = bodyY;
         lp.flags = flags(m);
         if (attached) {
             try { wm.updateViewLayout(root, lp); } catch (Throwable t) { Log.w(ScreenTime.TAG, "island layout", t); }
         }
+    }
+
+    /** The capsule window: around the camera down to the body, never touchable. */
+    private void placeCapsule() {
+        if (capLp == null) return;
+        capLp.width = idleW;
+        capLp.height = Math.max(idleH, bodyY - top);
+        capLp.x = centerX - idleW / 2;
+        capLp.y = top;
+        if (attached) {
+            try { wm.updateViewLayout(cap, capLp); } catch (Throwable t) { Log.w(ScreenTime.TAG, "capsule layout", t); }
+        }
+    }
+
+    private WindowManager.LayoutParams params(int type, int flags) {
+        WindowManager.LayoutParams p = new WindowManager.LayoutParams(1, 1, type, flags, PixelFormat.TRANSLUCENT);
+        p.gravity = Gravity.TOP | Gravity.LEFT;
+        p.windowAnimations = 0;
+        if (Build.VERSION.SDK_INT >= 28) p.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        if (Build.VERSION.SDK_INT >= 30) p.setFitInsetsTypes(0);
+        return p;
     }
 
     private boolean attach() {
@@ -338,20 +375,24 @@ final class IslandOverlay {
         int type = a11y ? WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
                 : Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
-        lp = new WindowManager.LayoutParams(idleW, idleH, type, flags(M_HIDDEN), PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.TOP | Gravity.LEFT;
+        lp = params(type, flags(M_HIDDEN));
         lp.setTitle("LiraIsland");
-        lp.windowAnimations = 0;
-        if (Build.VERSION.SDK_INT >= 28) {
-            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-        }
-        if (Build.VERSION.SDK_INT >= 30) lp.setFitInsetsTypes(0);
-        curW = idleH * 0.6f; curH = curW; curR = curW / 2f; curA = 0f;
+        capLp = params(type, flags(M_HIDDEN));
+        capLp.setTitle("LiraIslandCamera");
+        curW = idleW * 0.36f; curH = 0f; curR = 0f; curA = 1f;
+        capA = 0f; capS = 0.6f;
         compact.setAlpha(0f); compact.setVisibility(View.INVISIBLE);
         panel.setAlpha(0f); panel.setVisibility(View.INVISIBLE);
-        setWindow(M_HIDDEN, idleW, idleH);
+        setWindow(M_HIDDEN, 1, 1);
+        placeCapsule();
         try {
-            wm.addView(root, lp);
+            wm.addView(cap, capLp);
+            try {
+                wm.addView(root, lp);
+            } catch (Throwable t) {
+                try { wm.removeView(cap); } catch (Throwable ignored) {}
+                throw t;
+            }
             attached = true;
             fullscreen = false;
             mode = M_HIDDEN;
@@ -365,6 +406,7 @@ final class IslandOverlay {
     private void detach() {
         if (!attached) return;
         try { wm.removeView(root); } catch (Throwable t) { Log.w(ScreenTime.TAG, "island detach", t); }
+        try { wm.removeView(cap); } catch (Throwable t) { Log.w(ScreenTime.TAG, "capsule detach", t); }
         attached = false;
         mode = M_HIDDEN;
     }
@@ -397,22 +439,22 @@ final class IslandOverlay {
             top = Math.max(0, (sbH - idleH) / 2);
             idleW = Math.round(idleH * 3.3f);
         }
-        rowTop = Math.max(sbH - top, idleH) + dp(3);
+        bodyY = Math.max(sbH + dp(1), top + idleH + dp(2));
         rowH = dp(30);
-        compactH = rowTop + rowH + dp(7);
-        compactW = Math.min(screenW - dp(24), dp(236));
+        compactH = rowH + dp(10);
+        compactW = Math.min(screenW - dp(24), dp(258));
         expandedW = Math.min(screenW - dp(16), dp(420));
         if (expandedH < compactH) expandedH = compactH;
         if (compact != null) {
             FrameLayout.LayoutParams cl = (FrameLayout.LayoutParams) compact.getLayoutParams();
             cl.width = compactW - dp(36);
             cl.height = rowH;
-            cl.topMargin = rowTop;
+            cl.topMargin = (compactH - rowH) / 2;
             compact.setLayoutParams(cl);
             FrameLayout.LayoutParams pl = (FrameLayout.LayoutParams) panel.getLayoutParams();
             pl.width = expandedW;
             panel.setLayoutParams(pl);
-            panel.setPadding(dp(18), rowTop + dp(2), dp(18), dp(14));
+            panel.setPadding(dp(18), dp(14), dp(18), dp(14));
         }
     }
 
@@ -439,6 +481,8 @@ final class IslandOverlay {
 
     private void build() {
         root = new IslandView(ctx);
+        cap = new CapsuleView(ctx);
+        cap.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         root.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         compact = new CompactRow(ctx);
         panel = new ExpandedPanel(ctx);
@@ -511,7 +555,7 @@ final class IslandOverlay {
         }
 
         @Override protected void dispatchDraw(Canvas canvas) {
-            if (curA <= 0.001f) return;
+            if (curA <= 0.001f || curH < 0.5f) return;
             RectF r = shapeRect();
             float rad = Math.min(curR * press, Math.min(r.width(), r.height()) / 2f);
             paint.setAlpha(Math.round(255 * curA));
@@ -557,6 +601,48 @@ final class IslandOverlay {
                 }
             });
             pressAnim.start();
+        }
+    }
+
+    /**
+     * The capsule around the front camera and, while the body is out, a short neck with soft
+     * inner corners joining it to the body, like a drop hanging from the camera. It is narrow,
+     * so the clock and icons of the status bar on both sides stay visible.
+     */
+    final class CapsuleView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path neck = new Path(), corner = new Path();
+        private final RectF r = new RectF();
+
+        CapsuleView(Context c) {
+            super(c);
+            paint.setColor(BLACK);
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            if (capA <= 0.001f) return;
+            float w = getWidth(), hh = getHeight(), cx = w / 2f;
+            paint.setAlpha(Math.round(255 * capA));
+            float cw = idleW * capS, ch = idleH * capS;
+            r.set(cx - cw / 2f, (idleH - ch) / 2f, cx + cw / 2f, (idleH + ch) / 2f);
+            canvas.drawRoundRect(r, ch / 2f, ch / 2f, paint);
+            // neck grows with the body
+            float n = clamp(curH / dp(12)) * curA;
+            float gapTop = idleH * 0.5f;
+            if (n <= 0.01f || hh <= idleH) return;
+            float nw = idleW * 0.36f * n, f = Math.min(dp(6), hh - idleH) * n;
+            neck.reset();
+            neck.addRect(cx - nw / 2f, gapTop, cx + nw / 2f, hh, Path.Direction.CW);
+            for (int side = -1; side <= 1; side += 2) {
+                float x0 = cx + side * nw / 2f;
+                corner.reset();
+                corner.addRect(Math.min(x0, x0 + side * f), hh - f, Math.max(x0, x0 + side * f), hh, Path.Direction.CW);
+                Path hole = new Path();
+                hole.addCircle(x0 + side * f, hh - f, f, Path.Direction.CW);
+                corner.op(hole, Path.Op.DIFFERENCE);
+                neck.op(corner, Path.Op.UNION);
+            }
+            canvas.drawPath(neck, paint);
         }
     }
 
