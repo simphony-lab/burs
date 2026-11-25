@@ -55,9 +55,34 @@ public class ScreenTimeService extends Service {
 
     @Override public IBinder onBind(Intent intent) { return null; }
 
+    private static volatile ScreenTimeService self;
+
+    /** The accessibility service came or went: move the island to the right window type. */
+    static void hostChanged() {
+        final ScreenTimeService s = self;
+        if (s == null || s.main == null) return;
+        s.main.post(new Runnable() { @Override public void run() { s.rebuildIsland(); } });
+    }
+
+    private IslandOverlay newIsland() {
+        IslandAccessibility a = IslandAccessibility.instance;
+        return a != null ? new IslandOverlay(a, islandListener, true) : new IslandOverlay(this, islandListener, false);
+    }
+
+    private void rebuildIsland() {
+        if (!alive || !cfg.island) return;
+        boolean wantA11y = IslandAccessibility.instance != null;
+        if (island != null && !island.isDead() && island.isA11y() == wantA11y) return;
+        if (island != null) island.destroy();
+        island = newIsland();
+        island.setConfig(cfg);
+        kick();
+    }
+
     @Override public void onCreate() {
         super.onCreate();
         main = new Handler(Looper.getMainLooper());
+        self = this;
         thread = new HandlerThread("lira-screen-time");
         thread.start();
         work = new Handler(thread.getLooper());
@@ -110,7 +135,8 @@ public class ScreenTimeService extends Service {
         prunePending(c);
         if (c.island) {
             if (overlay != null) { overlay.destroy(); overlay = null; }
-            if (island == null || island.isDead()) island = new IslandOverlay(this, islandListener);
+            if (island != null && !island.isDead() && island.isA11y() != (IslandAccessibility.instance != null)) island.destroy();
+            if (island == null || island.isDead()) island = newIsland();
             island.setConfig(c);
         } else {
             if (island != null) { island.destroy(); island = null; }
@@ -123,6 +149,7 @@ public class ScreenTimeService extends Service {
 
     @Override public void onDestroy() {
         alive = false;
+        if (self == this) self = null;
         if (screenRx != null) {
             try { unregisterReceiver(screenRx); } catch (Throwable ignored) {}
             screenRx = null;

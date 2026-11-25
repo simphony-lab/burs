@@ -2,6 +2,7 @@ package com.local.simple.notes;
 
 import android.app.Activity;
 import android.app.AppOpsManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -221,9 +222,23 @@ public final class ScreenTime {
 
     /** Whether the tracker service has something to do with these settings and permissions. */
     static boolean wanted(Context c, Config cfg) {
-        if (!canOverlay(c)) return false;
-        if (cfg.island) return true;
-        return cfg.limitsOn() && hasUsageAccess(c);
+        if (cfg.island) return canOverlay(c) || islandA11y(c);
+        return canOverlay(c) && cfg.limitsOn() && hasUsageAccess(c);
+    }
+
+    /** Whether Lira's accessibility service (the "over everything" island) is switched on. */
+    static boolean islandA11y(Context c) {
+        try {
+            if (Settings.Secure.getInt(c.getContentResolver(), Settings.Secure.ACCESSIBILITY_ENABLED, 0) != 1) return false;
+            String list = Settings.Secure.getString(c.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (list == null) return false;
+            ComponentName me = new ComponentName(c.getPackageName(), IslandAccessibility.class.getName());
+            for (String part : list.split(":")) {
+                ComponentName cn = ComponentName.unflattenFromString(part.trim());
+                if (me.equals(cn)) return true;
+            }
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     // ---- island inbox: ticks made on the island, picked up by Lira when it opens ----------------

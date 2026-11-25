@@ -269,4 +269,60 @@ public class IslandAndroidTest {
         assertTrue(c.tasks.get(0).done);
         assertFalse(ScreenTime.parse("{}").island);
     }
+
+    @Test public void accessibilityHostedIslandSurvivesSettingsScreens() throws Exception {
+        // window type: the accessibility overlay is the one Android does not hide in Settings
+        IslandOverlay a = new IslandOverlay(app, listener, true);
+        a.setConfig(cfg("{\"island\":{\"on\":true}}"));
+        a.update(tasksSnap(System.currentTimeMillis(), 1, 0));
+        settle();
+        assertTrue(a.isA11y());
+        assertEquals(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, ((WindowManager.LayoutParams) a.view().getLayoutParams()).type);
+        a.destroy();
+
+        // detection of the switched-on service
+        assertFalse(ScreenTime.islandA11y(app));
+        android.provider.Settings.Secure.putInt(app.getContentResolver(), android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 1);
+        android.provider.Settings.Secure.putString(app.getContentResolver(), android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                "com.other/.X:" + app.getPackageName() + "/" + IslandAccessibility.class.getName());
+        assertTrue(ScreenTime.islandA11y(app));
+        // island may run on the accessibility window alone, without the overlay permission
+        ShadowSettings.setCanDrawOverlays(false);
+        assertTrue(ScreenTime.wanted(app, cfg("{\"island\":{\"on\":true}}")));
+        assertFalse(ScreenTime.wanted(app, cfg("{\"limits\":{\"yt\":30}}")));
+        ShadowSettings.setCanDrawOverlays(true);
+
+        // the running island moves to the accessibility window and back
+        long now = System.currentTimeMillis();
+        String task = "{\"k\":\"d|t\",\"t\":\"Звонок\",\"s\":" + (now - M) + ",\"e\":" + (now + 30 * M) + "}";
+        ScreenTime.write(app, "{\"island\":{\"on\":true},\"tasks\":[" + task + "]}");
+        ServiceController<ScreenTimeService> sc = Robolectric.buildService(ScreenTimeService.class).create().startCommand(0, 1);
+        ScreenTimeService s = sc.get();
+        HandlerThread th = (HandlerThread) field(s, "thread");
+        shadowOf(th.getLooper()).idle();
+        settle();
+        IslandOverlay before = (IslandOverlay) field(s, "island");
+        assertFalse(before.isA11y());
+        ServiceController<IslandAccessibility> ac = Robolectric.buildService(IslandAccessibility.class).create();
+        java.lang.reflect.Method connected = IslandAccessibility.class.getDeclaredMethod("onServiceConnected");
+        connected.setAccessible(true);
+        connected.invoke(ac.get());
+        settle();
+        shadowOf(th.getLooper()).idle();
+        settle();
+        IslandOverlay now1 = (IslandOverlay) field(s, "island");
+        assertTrue(now1.isA11y());
+        assertTrue(before.isDead());
+        assertEquals(IslandOverlay.M_COMPACT, now1.mode());
+        assertEquals(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, ((WindowManager.LayoutParams) now1.view().getLayoutParams()).type);
+        ac.destroy();
+        settle();
+        shadowOf(th.getLooper()).idle();
+        settle();
+        IslandOverlay back = (IslandOverlay) field(s, "island");
+        assertFalse(back.isA11y());
+        assertTrue(now1.isDead());
+        assertEquals(IslandOverlay.M_COMPACT, back.mode());
+        sc.destroy();
+    }
 }

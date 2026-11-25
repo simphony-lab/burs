@@ -53,6 +53,7 @@ public class ScreenTimeBridge {
                 battery = pm != null && pm.isIgnoringBatteryOptimizations(app.getPackageName());
             } catch (Throwable ignored) {}
             o.put("battery", battery);
+            o.put("a11y", ScreenTime.islandA11y(app));
             o.put("sdk", Build.VERSION.SDK_INT);
             return o.toString();
         } catch (Throwable t) {
@@ -76,6 +77,11 @@ public class ScreenTimeBridge {
     public void openBattery() {
         open(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + app.getPackageName())),
                 new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+    }
+
+    @JavascriptInterface
+    public void openA11y() {
+        open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS), new Intent(Settings.ACTION_SETTINGS));
     }
 
     private void open(final Intent first, final Intent fallback) {

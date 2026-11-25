@@ -96,12 +96,24 @@ final class IslandOverlay {
         @Override public void run() { if (mode == M_EXPANDED) collapse(); }
     };
 
-    IslandOverlay(Context c, Listener l) {
+    /** true when the window belongs to Lira's accessibility service (shown even over system Settings). */
+    private final boolean a11y;
+
+    IslandOverlay(Context c, Listener l) { this(c, l, false); }
+
+    /**
+     * @param c context whose WindowManager owns the window; for {@code a11y} it must be the
+     *          running accessibility service, which supplies the window token.
+     */
+    IslandOverlay(Context c, Listener l, boolean a11y) {
         ctx = c;
         listener = l;
+        this.a11y = a11y;
         wm = (WindowManager) c.getSystemService(Context.WINDOW_SERVICE);
         density = c.getResources().getDisplayMetrics().density;
     }
+
+    boolean isA11y() { return a11y; }
 
     int dp(float v) { return Math.round(v * density); }
 
@@ -321,8 +333,10 @@ final class IslandOverlay {
         if (dead) return false;
         if (root == null) build();
         geometry();
-        int type = Build.VERSION.SDK_INT >= 26
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        // An accessibility overlay is not hidden by system Settings and sits above the status bar,
+        // so the whole island can be tapped. Otherwise an ordinary app overlay.
+        int type = a11y ? WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                : Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
         lp = new WindowManager.LayoutParams(idleW, idleH, type, flags(M_HIDDEN), PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.LEFT;
