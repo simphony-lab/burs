@@ -273,7 +273,9 @@ public class ScreenTimeAndroidTest {
 
         // Over the limit: expands, red, "Лимит исчерпан".
         event("org.telegram.messenger", "Chat", UsageEvents.Event.MOVE_TO_FOREGROUND, System.currentTimeMillis());
-        runTicks(s, 1);
+        // An event stamped "now" is read by a later tick; the HandlerThread runs on a real thread in
+        // Robolectric, so give it a few ticks instead of relying on exact timing.
+        for (int i = 0; i < 6 && !o.isShown(); i++) runTicks(s, 1);
         assertTrue(o.isShown());
         assertTrue(o.isExpanded());
         assertEquals("Лимит исчерпан", o.nameText().toString());

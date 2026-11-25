@@ -155,6 +155,16 @@ public class ScreenTimeBridge {
         }
     }
 
+    /** Ticks made on the island since the last call: [{"k":taskKey,"d":done,"ts":ms}], oldest first. */
+    @JavascriptInterface
+    public String takeInbox() {
+        try {
+            return ScreenTime.inboxTake(app).toString();
+        } catch (Throwable t) {
+            return "[]";
+        }
+    }
+
     @JavascriptInterface
     public String getConfig() {
         try {
