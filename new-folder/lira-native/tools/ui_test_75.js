@@ -107,7 +107,7 @@ ok(await E(`rpMatch({kind:'days',days:[1,3],from:'2026-11-01'},'2026-11-30')&&!r
 ok(await E(`!rpMatch({kind:'daily',from:'2026-11-25',until:'2026-11-26'},'2026-11-27')`),'until stops repeat');
 await E(`v7PlanGo('${today}')`);await pg.waitForTimeout(300);await shot('10_plan');
 // delete all from list
-await pg.evaluate(()=>{window.confirm=()=>true});await pg.click('[data-action="rpDelete"]');await pg.waitForTimeout(400);
+await pg.click('[data-action="rpDelete"]');await pg.waitForTimeout(350);if(await pg.isVisible('.la-yes'))await pg.click('.la-yes');await pg.waitForTimeout(400);
 ok(await E("rpState().length")===0,'repeat removed');
 // plan check animation
 await E(`(function(){v7PlanDay('${today}').items.push({id:'tB',title:'Купить хлеб',time:'',end:'',note:'',status:'pending',createdAt:Date.now(),completedAt:null});save();render()})()`);const tid='tB';
